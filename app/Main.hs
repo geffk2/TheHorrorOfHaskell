@@ -10,6 +10,8 @@ import Graphics.Gloss.Data.Extent
 import qualified Data.Set as S
 import Data.Maybe
 
+import ParseMap
+
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
 raycast = castSegIntoCellularQuadTree
 
@@ -38,10 +40,12 @@ loadTextures = do
 main :: IO ()
 main = do
   textures <- loadTextures
-  let st = initState{textures = textures}
+  sampleMap <- parseMap "maps/main_map.json"
+  let (ext, game) = constructMap sampleMap
+  let st = initState{textures = textures, ext = ext, gameMap = game}
   play window black 30 st renderFrame handleEvents handleTime
   where
-    window = InWindow "hehe" windowSize (700, 200)
+    window = InWindow "Boo" windowSize (700, 200)
 
 handleEvents :: Event -> State -> State
 handleEvents (EventKey k Down _ _) s = s{keysPressed = S.insert k (keysPressed s)}
@@ -78,27 +82,9 @@ data State = State {
 }
 
 initState :: State
-initState = State ext m (1, 1) (1, 1) S.empty []
+initState = State ext m (8, 8) (1, 1) S.empty []
   where
-    (ext, m) = constructMap sampleMap
-
-type GameMap = [[Tile]]
-
-sampleMap :: GameMap
-sampleMap = [
-    [w, w, w, w]
-  , [w, a, a, w]
-  , [w, a, a, w]
-  , [w, a, a, w]
-  , [w, a, a, w]
-  , [w, a, w, w]
-  , [w, w, w, w]
-  ]
-  where
-    (a, w) = (Air, Wall)
-
-data Tile = Wall | Air
-  deriving (Show, Eq)
+    (ext, m) = constructMap []
 
 constructMap :: GameMap -> (Extent, QuadTree Tile)
 constructMap m = (ext, foldr insTile emptyTree tiles)
