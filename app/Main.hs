@@ -119,23 +119,37 @@ renderFrame s@(State ext m pos dir _ textures) = walls
     drawRay i = let
         vecDir = rotateV (i2f i * fov / screenW) dir
         end = pos `addVV` mulSV renderDistance vecDir
-      in renderWall textures i pos (raycast pos end ext m)
+      in renderWall textures i pos dir (raycast pos end ext m)
     walls = pictures (map drawRay [-halfW .. halfW])
 
 
-renderWall :: Textures -> Int -> Point -> Maybe (Point, Extent, Tile) -> Picture
-renderWall _ _ _ Nothing = blank
-renderWall tex i pos (Just (p, ext, t)) = res
+renderWall :: Textures -> Int -> Point -> Vector -> Maybe (Point, Extent, Tile) -> Picture
+renderWall _ _ _ _ Nothing = blank
+renderWall tex i pos dir (Just (p, ext, t)) = res
   where
     screenW = i2f (fst windowSize)
+    texW = i2f (fst textureResolution)
     halfH = i2f (snd windowSize `div` 2)
     side = hitToSide p ext
     dist = magV (pos `addVV` mulSV (-1) p) * cos (i2f i * fov / screenW)
     col = wallColor t side
     x = i2f i
     y = halfH / dist
+   
+    fl = case lookup Floor tex of 
+        Nothing -> blank 
+        Just bmp -> color (greyN 0.5) $ line [(x, -y), (x, -halfH)]
 
-    scaleFactor = y / fromIntegral (snd textureResolution)
+    -- drawFloor bmp fy = translate x (-fy) $ color (greyN 0.5) $ line  [> $ BitmapSection (Rectangle (floor texX, floor texY) (7, 7)) bmp  <]
+    --   where
+    --     r = fy
+    --     beta = i2f i * fov / screenW
+    --     lineDist = halfH * texW / r
+    --     d = lineDist / cos beta
+    --     alpha = beta + angleVV dir (0, 1)
+    --     (texX, texY) = pos `addVV` (d * cos alpha, -d * sin alpha)
+
+    scaleFactor = 2 * y / fromIntegral (snd textureResolution)
     distDarkCoef = dist / renderDistance
     res = case lookup t tex of
       Nothing 
