@@ -6,11 +6,31 @@ Boo
 </details>
 
 
-### Project introduction
+# Links
+[GitHub Projects (to see process)](https://github.com/users/geffk2/projects/1/views/1)
+
+* [Introduction](#introduction)
+  * [Project description](#project-description)
+  * [Raytracing](#raytracing)
+  * [Characters and map designing](#characher-and-map-designing)
+  * [NPC](#npc-ai)
+  * [Game images](#game-images)
+* [Installation](#installation)
+  * [Requirements](#requirements)
+  * [How to run](#run-game)
+* [Gameplay](#gameplay)
+  * [Game story](#game-story)
+  * [Controls](#controls)
+* [Development](#development)
+  * [Raycasting implementation](#raycasting-implementation)
+  * [NPC brain](#npc-algorithm-implementation)
+
+# Introduction
+### Project description
 
 
 In this project we want to create a raytraced horror game like slenderman. Player will need to find some items on the map, while being chased by scary thing. 
-[Images to understand idea that we want to implement](#GameImages).
+[Images to understand idea that we want to implement](#game-images).
 
 This project seems interesting to us because it contains a lot of stept:
 * Raytracing
@@ -50,8 +70,63 @@ So NPC logic is complex thing that make most of the game. Good example of NPC lo
 That's one example and how it will be implemented will be discussed with team
 
 
-### GameImages 
+### Game images 
 We inpired by the game slenderman.
 
 ![SlendermanImage1](https://upload.wikimedia.org/wikipedia/ru/3/39/Slender-Man_Game_Play.jpg)
 ![SlendermanImage2](https://images.sftcdn.net/images/t_app-cover-l,f_auto/p/485eadd4-9b26-11e6-8371-00163ec9f5fa/1274410765/slender-mac-screenshot.jpg)
+
+
+
+# Installation
+
+### Requirements
+This game is written on Haskell, so you should download [gch](https://www.haskell.org/downloads/) and [cabal](https://www.haskell.org/cabal/).
+```
+ghc-8.10.7
+cabal-3.6
+```
+
+
+### Run game
+
+Type in shell two command:
+```shell
+$ cabal build
+$ cabal run
+```
+If window `boo` appeared, you succesfully finished your configuration!
+
+
+# Gameplay
+
+### Game story
+You are an innopolis student who 
+
+Your goal is to find all buttons to escape from old creppy house.
+However there you are not alone in the house, something strange is also with you. But don't mind it, 
+
+
+### Controls
+This game require only keyboard, so here is the list of all buttons and their functionallity:
+
+* `w - move forwars`
+* `a - turn left` 
+* `s - move backeards`
+* `d - turn right`
+
+Important to mention that all buttons are **key sensitive**!
+
+
+
+# Development 
+
+### Raycasting implementation
+
+For walls we used `Graphics.Gloss.Algorithms.RayCast.castSegIntoCellularQuadTree` which is already build-in tool to detect where 'ray' intersected with object (Coords, Tile, Side). For more info check [documentation](https://hackage.haskell.org/package/gloss-algorithms-1.13.0.3/docs/Graphics-Gloss-Algorithms-RayCast.html).
+
+
+For textures we implemeted `hitToTexture` function which by hitPoint and Side draw texture. Implementation could be found [here](https://github.com/geffk2/TheHorrorOfHaskell/blob/e822705e0cbf956dd23b31789529a4e9a9b99cdb/app/Main.hs#L151).
+
+### NPC algorithm implementation
+
