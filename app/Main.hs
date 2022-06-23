@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Main where
 import Graphics.Gloss
 import Graphics.Gloss.Algorithms.RayCast
@@ -19,7 +18,7 @@ raytrace :: Point -> Point -> Extent -> QuadTree a -> [(Point, Extent, a)]
 raytrace = traceSegIntoCellularQuadTree
 
 fov :: Float
-fov = pi / 2.5
+fov = pi / 2
 
 renderDistance :: Float
 renderDistance = 10
@@ -35,12 +34,13 @@ type Textures = [(Tile, BitmapData)]
 loadTextures :: IO Textures 
 loadTextures = do
   Bitmap wallBmp <- loadBMP "textures/wall.bmp"
-  return [(Wall, wallBmp)]
+  Bitmap floorBmp <- loadBMP "textures/floor.bmp"
+  return [(Wall, wallBmp), (Floor, floorBmp)]
  
 main :: IO ()
 main = do
   textures <- loadTextures
-  sampleMap <- parseMap "maps/main_map.json"
+  sampleMap <- parseMap "maps/map.json"
   let (ext, game) = constructMap sampleMap
   let st = initState{textures = textures, ext = ext, gameMap = game}
   play window black 30 st renderFrame handleEvents handleTime
@@ -111,7 +111,7 @@ infixl 9 !?
 l !!? (i, j) = (!? j) =<< (l !? i)
 
 renderFrame :: State -> Picture
-renderFrame (State ext m pos dir _ textures) = pictures (map drawRay [-halfW .. halfW])
+renderFrame s@(State ext m pos dir _ textures) = walls
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -120,15 +120,17 @@ renderFrame (State ext m pos dir _ textures) = pictures (map drawRay [-halfW .. 
         vecDir = rotateV (i2f i * fov / screenW) dir
         end = pos `addVV` mulSV renderDistance vecDir
       in renderWall textures i pos (raycast pos end ext m)
+    walls = pictures (map drawRay [-halfW .. halfW])
 
 
 renderWall :: Textures -> Int -> Point -> Maybe (Point, Extent, Tile) -> Picture
 renderWall _ _ _ Nothing = blank
 renderWall tex i pos (Just (p, ext, t)) = res
   where
+    screenW = i2f (fst windowSize)
     halfH = i2f (snd windowSize `div` 2)
-    dist = magV (pos `addVV` mulSV (-1) p)
     side = hitToSide p ext
+    dist = magV (pos `addVV` mulSV (-1) p) * cos (i2f i * fov / screenW)
     col = wallColor t side
     x = i2f i
     y = halfH / dist
@@ -171,6 +173,9 @@ hitToSide (x, y) ext
   | otherwise  = Inside
   where
     (n, s, e, w) = takeExtent ext
+
+fractionalOfV :: Vector -> Vector
+fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
 i2f :: Int -> Float
 i2f = fromIntegral

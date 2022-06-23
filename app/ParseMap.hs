@@ -5,7 +5,7 @@ import Control.Applicative
 import qualified Data.ByteString.Lazy as B
 
 
-data Tile = Wall | Air
+data Tile = Wall | Air | Floor
   deriving (Show, Eq)
 
 
