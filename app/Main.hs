@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 module Main where
 import Graphics.Gloss
 import Graphics.Gloss.Algorithms.RayCast
@@ -22,13 +23,25 @@ renderDistance :: Float
 renderDistance = 10
 
 windowSize :: (Int, Int)
-windowSize = (500, 500)
+windowSize = (800, 600)
 
+textureResolution :: (Int, Int) 
+textureResolution = (250, 250)
+
+type Textures = [(Tile, BitmapData)]
+
+loadTextures :: IO Textures 
+loadTextures = do
+  Bitmap wallBmp <- loadBMP "textures/wall.bmp"
+  return [(Wall, wallBmp)]
+ 
 main :: IO ()
-main = play window black 30 initState renderFrame handleEvents handleTime
+main = do
+  textures <- loadTextures
+  let st = initState{textures = textures}
+  play window black 30 st renderFrame handleEvents handleTime
   where
     window = InWindow "hehe" windowSize (700, 200)
-    pic = renderFrame initState
 
 handleEvents :: Event -> State -> State
 handleEvents (EventKey k Down _ _) s = s{keysPressed = S.insert k (keysPressed s)}
@@ -41,7 +54,6 @@ handleTime dt s = s{playerDir = newDir, playerPos = nextPos}
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
             `addVV` keyToDir (Char 's') (mulSV (-1) (playerDir s))
-    
     nextPos = let
         newPos = playerPos s `addVV` mulSV (2*dt) speed
         i2fV (x, y) = (floor x, floor y)
@@ -61,11 +73,12 @@ data State = State {
   gameMap :: QuadTree Tile,
   playerPos :: Point,
   playerDir :: Vector,
-  keysPressed :: S.Set Key
+  keysPressed :: S.Set Key,
+  textures :: Textures 
 }
 
 initState :: State
-initState = State ext m (1, 1) (1, 1) S.empty
+initState = State ext m (1, 1) (1, 1) S.empty []
   where
     (ext, m) = constructMap sampleMap
 
@@ -111,9 +124,8 @@ infixl 9 !?
 (!!?) :: [[a]] -> (Int, Int) -> Maybe a
 l !!? (i, j) = (!? j) =<< (l !? i)
 
-
 renderFrame :: State -> Picture
-renderFrame (State ext m pos dir _) = pictures (map drawRay [-halfW .. halfW])
+renderFrame (State ext m pos dir _ textures) = pictures (map drawRay [-halfW .. halfW])
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -121,12 +133,12 @@ renderFrame (State ext m pos dir _) = pictures (map drawRay [-halfW .. halfW])
     drawRay i = let
         vecDir = rotateV (i2f i * fov / screenW) dir
         end = pos `addVV` mulSV renderDistance vecDir
-      in renderWall i pos (raycast pos end ext m)
+      in renderWall textures i pos (raycast pos end ext m)
 
 
-renderWall :: Int -> Point -> Maybe (Point, Extent, Tile) -> Picture
-renderWall _ _ Nothing = blank
-renderWall i pos (Just (p, ext, t)) = color col $ line [(x, y), (x, -y)]
+renderWall :: Textures -> Int -> Point -> Maybe (Point, Extent, Tile) -> Picture
+renderWall _ _ _ Nothing = blank
+renderWall tex i pos (Just (p, ext, t)) = res
   where
     halfH = i2f (snd windowSize `div` 2)
     dist = magV (pos `addVV` mulSV (-1) p)
@@ -134,6 +146,11 @@ renderWall i pos (Just (p, ext, t)) = color col $ line [(x, y), (x, -y)]
     col = wallColor t side
     x = i2f i
     y = halfH / dist
+
+    scaleFactor = y / fromIntegral (snd textureResolution)
+    res = case lookup t tex of
+      Nothing  -> color col $ line [(x, y), (x, -y)]
+      Just bmp -> scale 1 scaleFactor (translate x 0 (hitToTexture bmp p side))
 
 wallColor :: Tile -> Side -> Color
 wallColor Wall W = dark $ dark $ dark red
@@ -143,6 +160,22 @@ wallColor _    _ = blue
 
 data Side = N | S | W | E | Inside
 
+hitToTexture :: BitmapData -> (Float, Float) -> Side -> Picture
+hitToTexture bmp (x, y) side = modifier (BitmapSection textureRect bmp)
+  where
+    frac = max (snd $ properFraction x) (snd $ properFraction y)
+    resX = fromIntegral (fst textureResolution) :: Float
+    textureX = round (frac * resX)
+    textureRect = Rectangle (textureX, 0) (1, snd textureResolution)
+    
+    halfH = i2f (snd windowSize `div` 2)
+
+    darkRect = color (makeColor 0 0 0 0.25) (line [(0, -halfH), (0, halfH)])
+    darken p = pictures [p,darkRect]
+    modifier = case side of S -> darken
+                            N -> darken
+                            _ -> id
+                        
 hitToSide :: (Float, Float) -> Extent -> Side
 hitToSide (x, y) ext
   | y == i2f n = N
