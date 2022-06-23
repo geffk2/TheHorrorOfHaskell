@@ -1,4 +1,8 @@
+
 # TheHorrorOfHaskell
+
+![Haskell](https://img.shields.io/badge/Haskell-5e5086?style=for-the-badge&logo=haskell&logoColor=white)
+
 
 <details>
 <summary>Click here</summary>
@@ -101,10 +105,9 @@ If window `boo` appeared, you succesfully finished your configuration!
 # Gameplay
 
 ### Game story
-You are an innopolis student who 
 
 Your goal is to find all buttons to escape from old creppy house.
-However there you are not alone in the house, something strange is also with you. But don't mind it, 
+However there you are not alone in the house, something strange is also with you. But don't mind it, it e̷v̴e̴r̶y̸t̴h̵i̸n̸g̴ ̴w̷i̴l̶l̶ ̴b̴e̴ ̵a̶l̵r̴i̷g̶h̸t̸
 
 
 ### Controls

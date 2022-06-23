@@ -21,7 +21,7 @@ fov :: Float
 fov = pi / 2
 
 renderDistance :: Float
-renderDistance = 10
+renderDistance = 6
 
 windowSize :: (Int, Int)
 windowSize = (800, 600)
@@ -136,9 +136,31 @@ renderWall tex i pos (Just (p, ext, t)) = res
     y = halfH / dist
 
     scaleFactor = y / fromIntegral (snd textureResolution)
+    distDarkCoef = dist / renderDistance
     res = case lookup t tex of
-      Nothing  -> color col $ line [(x, y), (x, -y)]
-      Just bmp -> scale 1 scaleFactor (translate x 0 (hitToTexture bmp p side))
+      Nothing 
+        -> color (darkenColor (min 1 distDarkCoef) col) 
+        $ line [(x, y), (x, -y)]
+      Just bmp 
+        -> scale 1 scaleFactor 
+        $ translate x 0 
+        $ darkenImg (min 1 distDarkCoef) 
+        $ darkenImg 0.3
+        $ hitToTexture bmp p side
+
+
+-- | Make color darker by coefficient that should be normalized (from 0 to 1)
+darkenColor :: Float -> Color -> Color
+darkenColor alpha color = mixColors (1 - alpha) alpha color black
+
+
+-- | Make image darker by coefficient
+darkenImg :: Float -> Picture -> Picture
+darkenImg alpha p = pictures [p, darkRect]
+  where
+    halfH = i2f (snd windowSize `div` 2)
+    darkRect = color (makeColor 0 0 0 alpha) (line [(0, -halfH), (0, halfH)])
+
 
 wallColor :: Tile -> Side -> Color
 wallColor Wall W = dark $ dark $ dark red
@@ -156,12 +178,8 @@ hitToTexture bmp (x, y) side = modifier (BitmapSection textureRect bmp)
     textureX = round (frac * resX)
     textureRect = Rectangle (textureX, 0) (1, snd textureResolution)
     
-    halfH = i2f (snd windowSize `div` 2)
-
-    darkRect = color (makeColor 0 0 0 0.25) (line [(0, -halfH), (0, halfH)])
-    darken p = pictures [p,darkRect]
-    modifier = case side of S -> darken
-                            N -> darken
+    modifier = case side of S -> darkenImg 0.25
+                            N -> darkenImg 0.25
                             _ -> id
                         
 hitToSide :: (Float, Float) -> Extent -> Side
