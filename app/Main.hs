@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BlockArguments #-}
+
 module Main where
 import Graphics.Gloss
 import Graphics.Gloss.Algorithms.RayCast
@@ -9,7 +12,11 @@ import Graphics.Gloss.Data.Extent
 import qualified Data.Set as S
 import Data.Maybe
 
-import ParseMap
+import ParseMap ( GameMap, Tile(..), parseMap )
+import MusicPlayer
+    ( playSound, Sound(Walking, Silence, Doorbell, StopWalking), Sounds, loadSounds, initMusicPlayer )
+import SDL.Mixer (Chunk)
+import qualified SDL.Mixer as Mix
 
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
 raycast = castSegIntoCellularQuadTree
@@ -26,34 +33,43 @@ renderDistance = 6
 windowSize :: (Int, Int)
 windowSize = (800, 600)
 
-textureResolution :: (Int, Int) 
+textureResolution :: (Int, Int)
 textureResolution = (250, 250)
 
 type Textures = [(Tile, BitmapData)]
 
-loadTextures :: IO Textures 
+loadTextures :: IO Textures
 loadTextures = do
   Bitmap wallBmp <- loadBMP "textures/wall.bmp"
   Bitmap floorBmp <- loadBMP "textures/floor.bmp"
   return [(Wall, wallBmp), (Floor, floorBmp)]
- 
+
+
 main :: IO ()
 main = do
+  initMusicPlayer
+
   textures <- loadTextures
   sampleMap <- parseMap "maps/map.json"
+  sounds <- loadSounds
+
+
   let (ext, game) = constructMap sampleMap
-  let st = initState{textures = textures, ext = ext, gameMap = game}
-  play window black 30 st renderFrame handleEvents handleTime
+
+  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1
+  playIO window black 30 st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
 
-handleEvents :: Event -> State -> State
-handleEvents (EventKey k Down _ _) s = s{keysPressed = S.insert k (keysPressed s)}
-handleEvents (EventKey k Up _ _) s   = s{keysPressed = S.delete k (keysPressed s)}
-handleEvents _ s = s
+handleEvents :: Event -> State -> IO State
+handleEvents (EventKey k Down _ _) s = return s{keysPressed = S.insert k (keysPressed s)}
+handleEvents (EventKey k Up _ _) s   = return s{keysPressed = S.delete k (keysPressed s)}
+handleEvents _ s = return s
 
-handleTime :: Float -> State -> State
-handleTime dt s = s{playerDir = newDir, playerPos = nextPos}
+handleTime :: Float -> State -> IO State
+handleTime dt s = do
+  playSound sound (sounds s)
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
@@ -63,11 +79,17 @@ handleTime dt s = s{playerDir = newDir, playerPos = nextPos}
         i2fV (x, y) = (floor x, floor y)
         isPosTaken p = isJust (lookupByCoord (ext s) p (gameMap s))
       in if isPosTaken (i2fV newPos) then newPos `addVV` mulSV (-2*dt) speed else newPos
+    newTime = timePassed s + dt
 
     newDir
       | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
       | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
       | otherwise = playerDir s
+    
+    sound
+      | floor newTime `mod` 50 == 0 = Doorbell
+      | otherwise                   = Silence
+
 
 addVV :: Vector -> Vector -> Vector
 addVV (x0, y0) (x1, y1) = (x0 + x1, y0 + y1)
@@ -78,13 +100,10 @@ data State = State {
   playerPos :: Point,
   playerDir :: Vector,
   keysPressed :: S.Set Key,
-  textures :: Textures 
+  textures :: Textures,
+  sounds :: Sound -> Mix.Chunk,
+  timePassed :: Float
 }
-
-initState :: State
-initState = State ext m (8, 8) (1, 1) S.empty []
-  where
-    (ext, m) = constructMap []
 
 constructMap :: GameMap -> (Extent, QuadTree Tile)
 constructMap m = (ext, foldr insTile emptyTree tiles)
@@ -110,8 +129,16 @@ infixl 9 !?
 (!!?) :: [[a]] -> (Int, Int) -> Maybe a
 l !!? (i, j) = (!? j) =<< (l !? i)
 
-renderFrame :: State -> Picture
-renderFrame s@(State ext m pos dir _ textures) = walls
+
+maybeChunkToChunk :: Sounds -> Maybe Chunk -> Chunk
+maybeChunkToChunk _ (Just chunk)  = chunk
+maybeChunkToChunk sounds Nothing  = snd (head sounds)
+
+
+renderFrame :: State -> IO Picture
+renderFrame s@(State ext m pos dir keys textures sounds _) = do
+  playSound sound sounds
+  return walls
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -119,46 +146,37 @@ renderFrame s@(State ext m pos dir _ textures) = walls
     drawRay i = let
         vecDir = rotateV (i2f i * fov / screenW) dir
         end = pos `addVV` mulSV renderDistance vecDir
-      in renderWall textures i pos dir (raycast pos end ext m)
+      in renderWall textures i pos (raycast pos end ext m)
     walls = pictures (map drawRay [-halfW .. halfW])
 
+    sound
+      | S.member (Char 'w') keys = Walking
+      | S.member (Char 's') keys = Walking
+      | otherwise                = StopWalking
 
-renderWall :: Textures -> Int -> Point -> Vector -> Maybe (Point, Extent, Tile) -> Picture
-renderWall _ _ _ _ Nothing = blank
-renderWall tex i pos dir (Just (p, ext, t)) = res
+
+renderWall :: Textures -> Int -> Point -> Maybe (Point, Extent, Tile) -> Picture
+renderWall _ _ _ Nothing = blank
+renderWall tex i pos (Just (p, ext, t)) = res
   where
     screenW = i2f (fst windowSize)
-    texW = i2f (fst textureResolution)
     halfH = i2f (snd windowSize `div` 2)
     side = hitToSide p ext
     dist = magV (pos `addVV` mulSV (-1) p) * cos (i2f i * fov / screenW)
     col = wallColor t side
     x = i2f i
     y = halfH / dist
-   
-    fl = case lookup Floor tex of 
-        Nothing -> blank 
-        Just bmp -> color (greyN 0.5) $ line [(x, -y), (x, -halfH)]
 
-    -- drawFloor bmp fy = translate x (-fy) $ color (greyN 0.5) $ line  [> $ BitmapSection (Rectangle (floor texX, floor texY) (7, 7)) bmp  <]
-    --   where
-    --     r = fy
-    --     beta = i2f i * fov / screenW
-    --     lineDist = halfH * texW / r
-    --     d = lineDist / cos beta
-    --     alpha = beta + angleVV dir (0, 1)
-    --     (texX, texY) = pos `addVV` (d * cos alpha, -d * sin alpha)
-
-    scaleFactor = 2 * y / fromIntegral (snd textureResolution)
+    scaleFactor = y / fromIntegral (snd textureResolution)
     distDarkCoef = dist / renderDistance
     res = case lookup t tex of
-      Nothing 
-        -> color (darkenColor (min 1 distDarkCoef) col) 
+      Nothing
+        -> color (darkenColor (min 1 distDarkCoef) col)
         $ line [(x, y), (x, -y)]
-      Just bmp 
-        -> scale 1 scaleFactor 
-        $ translate x 0 
-        $ darkenImg (min 1 distDarkCoef) 
+      Just bmp
+        -> scale 1 scaleFactor
+        $ translate x 0
+        $ darkenImg (min 1 distDarkCoef)
         $ darkenImg 0.3
         $ hitToTexture bmp p side
 
@@ -191,11 +209,11 @@ hitToTexture bmp (x, y) side = modifier (BitmapSection textureRect bmp)
     resX = fromIntegral (fst textureResolution) :: Float
     textureX = round (frac * resX)
     textureRect = Rectangle (textureX, 0) (1, snd textureResolution)
-    
+
     modifier = case side of S -> darkenImg 0.25
                             N -> darkenImg 0.25
                             _ -> id
-                        
+
 hitToSide :: (Float, Float) -> Extent -> Side
 hitToSide (x, y) ext
   | y == i2f n = N

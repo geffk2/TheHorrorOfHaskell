@@ -85,11 +85,19 @@ We inpired by the game slenderman.
 # Installation
 
 ### Requirements
-This game is written on Haskell, so you should download [gch](https://www.haskell.org/downloads/) and [cabal](https://www.haskell.org/cabal/).
+Before installing anything below, **Linux**  users should download sound libraries and rebuild `SDL` if you have already installed one
+```shell
+$ sudo apt-get install libasound2-dev libpulse-dev
+```
+
+This game is written on Haskell, so you should download [gch](https://www.haskell.org/downloads/), [cabal](https://www.haskell.org/cabal/), [sdl2](https://github.com/haskell-game/sdl2), [sdl2-mixer](https://www.libsdl.org/projects/SDL_mixer/).
 ```
 ghc-8.10.7
 cabal-3.6
+sdl2-2.0.22
+sdl2_mixer-2.0.4
 ```
+
 
 
 ### Run game
