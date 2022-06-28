@@ -40,7 +40,7 @@ main = do
   let (ext, game) = constructMap sampleMap
 
   let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 []
-  playIO window black 30 st renderFrame handleEvents handleTime
+  playIO window black fps st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
 
@@ -143,16 +143,13 @@ renderWall tex i pos dir (Just (p, ext, t)) = (res, dist)
    
     scaleFactor = 2 * y / fromIntegral (snd textureResolution)
     distDarkCoef = dist / renderDistance
-    res = case lookup (Left t) tex of
-      Nothing 
-        -> color (darkenColor (min 1 distDarkCoef) col) 
-        $ line [(x, y), (x, -y)]
-      Just bmp
-        -> scale 1 scaleFactor
-        $ translate x 0
-        $ darkenImg (min 1 distDarkCoef)
-        $ darkenImg 0.3
-        $ hitToTexture bmp p side
+    res = let 
+            Bitmap bmp = tex (Left t) 
+           in scale 1 scaleFactor
+              $ translate x 0
+              $ darkenImg (min 1 distDarkCoef)
+              $ darkenImg 0.3
+              $ hitToTexture bmp p side
 
 renderFloorAndCeiling :: Picture
 renderFloorAndCeiling = pictures (map (horLine (greyN 0.18)) [-halfH .. -1])
@@ -245,9 +242,8 @@ renderSprites (State _ _ pos dir _ textures _ _ sprites) zBuf = pictures $ map (
     sorted = sortSprites pos sprites
 
 renderSprite :: Textures -> [Float] -> Point -> Vector -> Sprite -> Picture
-renderSprite textures zBuf playerPos dir s@(Sprite pos t) = case lookup (Right t) textures of
-                                                      Nothing -> blank
-                                                      Just tex -> pictures $ map (renderCol tex) xRange 
+renderSprite textures zBuf playerPos dir s@(Sprite pos t) = let Bitmap tex = textures (Right t) 
+                                                             in pictures $ map (renderCol tex) xRange 
   where
     (screenX, transformY) = projectSprite playerPos dir s
     halfH = i2f (snd windowSize `div` 2) 
@@ -271,21 +267,9 @@ renderSprite textures zBuf playerPos dir s@(Sprite pos t) = case lookup (Right t
 
 
 -- | Helper functions
-i2f :: Int -> Float
-i2f = fromIntegral
-
 addVV :: Vector -> Vector -> Vector
 addVV (x0, y0) (x1, y1) = (x0 + x1, y0 + y1)
 
 normalV :: Vector -> Vector
 normalV (x, y) = (y, -x)
 
--- | A modified, safe version of !!
-(!?) :: [a] -> Int -> Maybe a
-[]     !? _ = Nothing
-(x:_)  !? 0 = Just x
-(_:xs) !? i = xs !? (i-1)
-infixl 9 !?
-
-(!!?) :: [[a]] -> (Int, Int) -> Maybe a
-l !!? (i, j) = (!? j) =<< (l !? i)
