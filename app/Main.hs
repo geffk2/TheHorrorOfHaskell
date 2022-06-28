@@ -11,41 +11,24 @@ import Graphics.Gloss.Data.Extent
 
 import qualified Data.Set as S
 import Data.Maybe
+import Data.List
+import Data.Matrix
 
 import ParseMap ( GameMap, Tile(..), parseMap )
 import MusicPlayer
     ( playSound, Sound(Walking, Silence, Doorbell, StopWalking), Sounds, loadSounds, initMusicPlayer )
 import SDL.Mixer (Chunk)
 import qualified SDL.Mixer as Mix
+import Config
 
+-- | Aliases for functions with extra long names
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
 raycast = castSegIntoCellularQuadTree
 
 raytrace :: Point -> Point -> Extent -> QuadTree a -> [(Point, Extent, a)]
 raytrace = traceSegIntoCellularQuadTree
-
-fov :: Float
-fov = pi / 2
-
-renderDistance :: Float
-renderDistance = 6
-
-windowSize :: (Int, Int)
-windowSize = (800, 600)
-
-textureResolution :: (Int, Int)
-textureResolution = (250, 250)
-
-type Textures = [(Tile, BitmapData)]
-
-loadTextures :: IO Textures
-loadTextures = do
-  Bitmap wallBmp <- loadBMP "textures/wall.bmp"
-  Bitmap floorBmp <- loadBMP "textures/floor.bmp"
-  return [(Wall, wallBmp), (Floor, floorBmp)]
-
-
 main :: IO ()
+
 main = do
   initMusicPlayer
 
@@ -56,15 +39,55 @@ main = do
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1
+  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 []
   playIO window black 30 st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
 
+
+
+-- | All about the state
+data State = State {
+  ext :: Extent,
+  gameMap :: QuadTree Tile,
+  playerPos :: Point,
+  playerDir :: Vector,
+  keysPressed :: S.Set Key,
+  textures :: Textures,
+  sounds :: Sound -> Mix.Chunk,
+  timePassed :: Float,
+  sprites :: [Sprite]
+}
+
+constructMap :: GameMap -> (Extent, QuadTree Tile)
+constructMap m = (ext, foldr insTile emptyTree tiles)
+  where
+    ext = makeExtent (maximum (map length m)) 0 (length m) 0
+    tiles = filter (isJust . fst) [(m !!? (i, j), (i, j))
+                                  | i <- [0..(length m)]
+                                  , j <- [0..(maybe 0 length (m !? i))]]
+
+    insTile :: (Maybe Tile, Coord) -> QuadTree Tile -> QuadTree Tile
+    insTile (Just Air, c) t = t
+    insTile (Just tile, c) t = fromMaybe t (insertByCoord ext c tile t)
+    insTile (Nothing, _)  t  = t
+
+type Textures = [(Either Tile SpriteType, BitmapData)]
+
+loadTextures :: IO Textures 
+loadTextures = do
+  Bitmap wallBmp <- loadBMP "textures/wall.bmp"
+  Bitmap floorBmp <- loadBMP "textures/floor.bmp"
+  Bitmap barrelBmp <- loadBMP "textures/barrel.bmp"
+  return [(Left Wall, wallBmp), (Left Floor, floorBmp),
+          (Right Barrel, barrelBmp)]
+
+-- | Handlers
 handleEvents :: Event -> State -> IO State
 handleEvents (EventKey k Down _ _) s = return s{keysPressed = S.insert k (keysPressed s)}
 handleEvents (EventKey k Up _ _) s   = return s{keysPressed = S.delete k (keysPressed s)}
 handleEvents _ s = return s
+
 
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
@@ -91,54 +114,11 @@ handleTime dt s = do
       | otherwise                   = Silence
 
 
-addVV :: Vector -> Vector -> Vector
-addVV (x0, y0) (x1, y1) = (x0 + x1, y0 + y1)
-
-data State = State {
-  ext :: Extent,
-  gameMap :: QuadTree Tile,
-  playerPos :: Point,
-  playerDir :: Vector,
-  keysPressed :: S.Set Key,
-  textures :: Textures,
-  sounds :: Sound -> Mix.Chunk,
-  timePassed :: Float
-}
-
-constructMap :: GameMap -> (Extent, QuadTree Tile)
-constructMap m = (ext, foldr insTile emptyTree tiles)
-  where
-    ext = makeExtent (maximum (map length m)) 0 (length m) 0
-    tiles = filter (isJust . fst) [(m !!? (i, j), (i, j))
-                                  | i <- [0..(length m)]
-                                  , j <- [0..(maybe 0 length (m !? i))]]
-
-    insTile :: (Maybe Tile, Coord) -> QuadTree Tile -> QuadTree Tile
-    insTile (Just Air, c) t = t
-    insTile (Just tile, c) t = fromMaybe t (insertByCoord ext c tile t)
-    insTile (Nothing, _)  t  = t
-
-
--- | A modified, safe version of !!
-(!?) :: [a] -> Int -> Maybe a
-[]     !? _ = Nothing
-(x:_)  !? 0 = Just x
-(_:xs) !? i = xs !? (i-1)
-infixl 9 !?
-
-(!!?) :: [[a]] -> (Int, Int) -> Maybe a
-l !!? (i, j) = (!? j) =<< (l !? i)
-
-
-maybeChunkToChunk :: Sounds -> Maybe Chunk -> Chunk
-maybeChunkToChunk _ (Just chunk)  = chunk
-maybeChunkToChunk sounds Nothing  = snd (head sounds)
-
-
+-- | Rendering
 renderFrame :: State -> IO Picture
-renderFrame s@(State ext m pos dir keys textures sounds _) = do
+renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
   playSound sound sounds
-  return walls
+  return (floor <> walls)
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -146,8 +126,11 @@ renderFrame s@(State ext m pos dir keys textures sounds _) = do
     drawRay i = let
         vecDir = rotateV (i2f i * fov / screenW) dir
         end = pos `addVV` mulSV renderDistance vecDir
-      in renderWall textures i pos (raycast pos end ext m)
-    walls = pictures (map drawRay [-halfW .. halfW])
+      in renderWall textures i pos dir (raycast pos end ext m)
+
+    rayResults = map drawRay [-halfW .. halfW]
+    walls = pictures $ map fst rayResults
+    floor = renderFloor
 
     sound
       | S.member (Char 'w') keys = Walking
@@ -155,9 +138,9 @@ renderFrame s@(State ext m pos dir keys textures sounds _) = do
       | otherwise                = StopWalking
 
 
-renderWall :: Textures -> Int -> Point -> Maybe (Point, Extent, Tile) -> Picture
-renderWall _ _ _ Nothing = blank
-renderWall tex i pos (Just (p, ext, t)) = res
+renderWall :: Textures -> Int -> Point -> Vector -> Maybe (Point, Extent, Tile) -> (Picture, Float)
+renderWall _ _ _ _ Nothing = (blank, 1)
+renderWall tex i pos dir (Just (p, ext, t)) = (res, dist)
   where
     screenW = i2f (fst windowSize)
     halfH = i2f (snd windowSize `div` 2)
@@ -166,12 +149,12 @@ renderWall tex i pos (Just (p, ext, t)) = res
     col = wallColor t side
     x = i2f i
     y = halfH / dist
-
-    scaleFactor = y / fromIntegral (snd textureResolution)
+   
+    scaleFactor = 2 * y / fromIntegral (snd textureResolution)
     distDarkCoef = dist / renderDistance
-    res = case lookup t tex of
-      Nothing
-        -> color (darkenColor (min 1 distDarkCoef) col)
+    res = case lookup (Left t) tex of
+      Nothing 
+        -> color (darkenColor (min 1 distDarkCoef) col) 
         $ line [(x, y), (x, -y)]
       Just bmp
         -> scale 1 scaleFactor
@@ -180,6 +163,23 @@ renderWall tex i pos (Just (p, ext, t)) = res
         $ darkenImg 0.3
         $ hitToTexture bmp p side
 
+renderFloor :: Picture
+renderFloor = pictures (map horLine [-halfH .. -1])
+  where
+    halfW = i2f (fst windowSize `div` 2)
+    halfH = i2f (snd windowSize `div` 2)
+    horLine y = let
+        darkCoef = halfH / (renderDistance * abs y)
+                 in color (darkenColor (min 1 darkCoef) (greyN 0.19))
+                    $ line [(-halfW, y), (halfW, y)]
+                  
+    
+
+wallColor :: Tile -> Side -> Color
+wallColor Wall W = dark $ dark $ dark red
+wallColor Wall E = dark $ dark $ dark red
+wallColor Wall _ = dark $ dark red
+wallColor _    _ = blue
 
 -- | Make color darker by coefficient that should be normalized (from 0 to 1)
 darkenColor :: Float -> Color -> Color
@@ -190,16 +190,10 @@ darkenColor alpha color = mixColors (1 - alpha) alpha color black
 darkenImg :: Float -> Picture -> Picture
 darkenImg alpha p = pictures [p, darkRect]
   where
-    halfH = i2f (snd windowSize `div` 2)
+    halfH = i2f (snd textureResolution) / 2 + 0.5
     darkRect = color (makeColor 0 0 0 alpha) (line [(0, -halfH), (0, halfH)])
 
-
-wallColor :: Tile -> Side -> Color
-wallColor Wall W = dark $ dark $ dark red
-wallColor Wall E = dark $ dark $ dark red
-wallColor Wall _ = dark $ dark red
-wallColor _    _ = blue
-
+-- | Some raycasting calculations
 data Side = N | S | W | E | Inside
 
 hitToTexture :: BitmapData -> (Float, Float) -> Side -> Picture
@@ -227,5 +221,85 @@ hitToSide (x, y) ext
 fractionalOfV :: Vector -> Vector
 fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
+-- NPC and other non-wall objects rendering
+--
+data SpriteType = Enemy | Pillar | Barrel
+  deriving (Show, Eq)
+
+data Sprite = Sprite {
+  pos :: Point,
+  texture :: SpriteType
+}
+
+sortSprites :: Point -> [Sprite] -> [Sprite]
+sortSprites playerPos = sortOn distF
+  where
+    distF (Sprite pos _) = -magV (mulSV (-1) pos `addVV` playerPos)
+
+projectSprite :: Point -> Vector -> Sprite -> (Int, Float)
+projectSprite pos dir (Sprite spritePos _) = (spriteScreenX, transformY) 
+  where
+    halfW = i2f (fst windowSize `div` 2)
+
+    (spriteX, spriteY) = spritePos `addVV` mulSV (-1) pos
+    (planeX, planeY) = mulSV (tan (fov / 2)) (normalV dir)
+    (dirX, dirY) = dir
+    invDet = 1 / (planeX * dirY - dirX * planeY)
+    
+    transformX = invDet * (dirY * spriteX - dirX * spriteY)
+    transformY = invDet * (-planeY * spriteX + planeX * spriteY)
+
+    spriteScreenX = floor $ halfW * ( transformX / transformY)
+
+
+renderSprites :: State -> [Float] -> Picture
+renderSprites (State _ _ pos dir _ textures _ _ sprites) zBuf = pictures $ map (renderSprite textures zBuf pos dir) sorted 
+  where
+    halfW = fst windowSize `div` 2
+    sorted = sortSprites pos sprites
+
+renderSprite :: Textures -> [Float] -> Point -> Vector -> Sprite -> Picture
+renderSprite textures zBuf playerPos dir s@(Sprite pos t) = case lookup (Right t) textures of
+                                                      Nothing -> blank
+                                                      Just tex -> pictures $ map (renderCol tex) xRange 
+  where
+    (screenX, transformY) = projectSprite playerPos dir s
+    halfH = i2f (snd windowSize `div` 2) 
+    textureH = i2f (snd textureResolution)
+    spriteH = textureH / transformY
+    scaleFactor = 1 / transformY 
+  
+    dx = floor (spriteH / 2) 
+    xRange = [screenX - dx .. screenX + dx] 
+
+    renderCol tex i
+      | transformY > 0
+        && (-halfW) < i && i < halfW
+        && transformY < fromMaybe 100 (zBuf !? (halfW + i))
+          = translate (i2f i) 0 $ scale 1 scaleFactor 
+            $ BitmapSection (Rectangle (floor textureX, 0) (1, floor textureH)) tex
+      | otherwise = blank
+        where
+          halfW = fst windowSize `div` 2
+          textureX = abs (i2f i - (-textureH / 2 + i2f screenX)) * textureH / (2 * i2f dx)
+
+
+-- | Helper functions
 i2f :: Int -> Float
 i2f = fromIntegral
+
+addVV :: Vector -> Vector -> Vector
+addVV (x0, y0) (x1, y1) = (x0 + x1, y0 + y1)
+
+normalV :: Vector -> Vector
+normalV (x, y) = (y, -x)
+
+-- | A modified, safe version of !!
+(!?) :: [a] -> Int -> Maybe a
+[]     !? _ = Nothing
+(x:_)  !? 0 = Just x
+(_:xs) !? i = xs !? (i-1)
+infixl 9 !?
+
+(!!?) :: [[a]] -> (Int, Int) -> Maybe a
+l !!? (i, j) = (!? j) =<< (l !? i)
