@@ -118,7 +118,7 @@ handleTime dt s = do
 renderFrame :: State -> IO Picture
 renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
   playSound sound sounds
-  return (floor <> walls)
+  return (floorAndCeiling <> walls)
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -130,7 +130,7 @@ renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
 
     rayResults = map drawRay [-halfW .. halfW]
     walls = pictures $ map fst rayResults
-    floor = renderFloor
+    floorAndCeiling = renderFloorAndCeiling
 
     sound
       | S.member (Char 'w') keys = Walking
@@ -163,15 +163,18 @@ renderWall tex i pos dir (Just (p, ext, t)) = (res, dist)
         $ darkenImg 0.3
         $ hitToTexture bmp p side
 
-renderFloor :: Picture
-renderFloor = pictures (map horLine [-halfH .. -1])
+renderFloorAndCeiling :: Picture
+renderFloorAndCeiling = pictures (map (horLine (greyN 0.18)) [-halfH .. -1])
+                          <> pictures (map (horLine (greyN 0.18)) [2 .. halfH])
   where
+    brownCol = makeColor 0.27 0.21 0.18 1
     halfW = i2f (fst windowSize `div` 2)
     halfH = i2f (snd windowSize `div` 2)
-    horLine y = let
+    horLine col y = let
         darkCoef = halfH / (renderDistance * abs y)
-                 in color (darkenColor (min 1 darkCoef) (greyN 0.19))
+                 in color (darkenColor (min 1 darkCoef) col)
                     $ line [(-halfW, y), (halfW, y)]
+
                   
     
 
