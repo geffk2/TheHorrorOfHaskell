@@ -4,16 +4,8 @@ import Data.Aeson
 import Control.Applicative
 import qualified Data.ByteString.Lazy as B
 
+import Config ( GameMap, intToTile )
 
-data Tile = Wall | Air | Floor
-  deriving (Show, Eq)
-
-
-type GameMap = [[Tile]]
-
-intToTile :: Int -> Tile
-intToTile 1 = Wall
-intToTile _ = Air
 
 parseMap :: String -> IO GameMap
 parseMap mapName = do

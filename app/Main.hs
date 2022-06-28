@@ -10,11 +10,11 @@ import Graphics.Gloss.Interface.IO.Game
 import Graphics.Gloss.Data.Extent
 
 import qualified Data.Set as S
-import Data.Maybe
+import Data.Maybe ( fromMaybe, isJust )
 import Data.List
 import Data.Matrix
 
-import ParseMap ( GameMap, Tile(..), parseMap )
+import ParseMap (parseMap)
 import MusicPlayer
     ( playSound, Sound(Walking, Silence, Doorbell, StopWalking), Sounds, loadSounds, initMusicPlayer )
 import SDL.Mixer (Chunk)
@@ -72,15 +72,6 @@ constructMap m = (ext, foldr insTile emptyTree tiles)
     insTile (Just tile, c) t = fromMaybe t (insertByCoord ext c tile t)
     insTile (Nothing, _)  t  = t
 
-type Textures = [(Either Tile SpriteType, BitmapData)]
-
-loadTextures :: IO Textures 
-loadTextures = do
-  Bitmap wallBmp <- loadBMP "textures/wall.bmp"
-  Bitmap floorBmp <- loadBMP "textures/floor.bmp"
-  Bitmap barrelBmp <- loadBMP "textures/barrel.bmp"
-  return [(Left Wall, wallBmp), (Left Floor, floorBmp),
-          (Right Barrel, barrelBmp)]
 
 -- | Handlers
 handleEvents :: Event -> State -> IO State
@@ -225,14 +216,6 @@ fractionalOfV :: Vector -> Vector
 fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
 -- NPC and other non-wall objects rendering
---
-data SpriteType = Enemy | Pillar | Barrel
-  deriving (Show, Eq)
-
-data Sprite = Sprite {
-  pos :: Point,
-  texture :: SpriteType
-}
 
 sortSprites :: Point -> [Sprite] -> [Sprite]
 sortSprites playerPos = sortOn distF
