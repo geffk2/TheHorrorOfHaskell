@@ -38,6 +38,10 @@ intToTile :: Int -> Tile
 intToTile 1 = Wall
 intToTile _ = Air
 
+tileToInt :: Tile -> Int
+tileToInt Wall = 1
+tileToInt Air = 0
+tileToInt Floor = -1
 
 data SpriteType = Enemy | Pillar | Barrel
   deriving (Show, Eq)

@@ -4,6 +4,7 @@ import Graphics.Gloss
 import Graphics.Gloss.Interface.IO.Game
 import Data.Maybe
 import Config
+import ParseMap
 
 
 data State = State {
@@ -31,7 +32,9 @@ handleEvents :: Event -> State -> IO State
 handleEvents (EventKey (Char k) Down _ _) state@(State m ts ct (ox,oy) (px, py)) = case k of
                                               'q' -> return state{currentTile = nextTile ct}
                                               'e' -> return state{currentTile = nextTile ct}
-                                              'S' -> return state
+                                              'S' -> do
+                                                saveMap m 
+                                                return state
                                               'w' -> return state{offset=(ox,oy-20)}
                                               'a' -> return state{offset=(ox+20,oy)}
                                               's' -> return state{offset=(ox,oy+20)}
@@ -88,9 +91,10 @@ renderFrame state@(State gMap tex cTile offset (px, py)) = return $ pictures (ma
 main :: IO()
 main = do
   tex <- loadTextures
+  gm <- parseMap "maps/customMap.json"  
 
   let initialState = State {
-    gameMap = replicate 25 (replicate 25 Air),
+    gameMap = gm,
     textures = tex,
     currentTile = Air,
     offset = (-100, -100),
