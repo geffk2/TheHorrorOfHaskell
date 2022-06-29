@@ -9,8 +9,9 @@ infixl 9 !?
 
 (!!?) :: [[a]] -> (Int, Int) -> Maybe a
 l !!? (i, j) = (l !? i) >>= (!? j) 
+
 fov :: Float
-fov = pi / 2
+fov = pi / 2 - pi/18
 
 i2f :: Int -> Float
 i2f = fromIntegral

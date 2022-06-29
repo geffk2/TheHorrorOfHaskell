@@ -13,6 +13,7 @@ import qualified Data.Set as S
 import Data.Maybe ( fromMaybe, isJust )
 import Data.List
 import Data.Matrix
+import Data.Complex
 
 import ParseMap (parseMap)
 import MusicPlayer
@@ -36,10 +37,11 @@ main = do
   sampleMap <- parseMap "maps/map.json"
   sounds <- loadSounds
 
+  let sprites = [Sprite (6, 6) Barrel]
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 []
+  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 sprites
   playIO window black fps st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
@@ -109,7 +111,7 @@ handleTime dt s = do
 renderFrame :: State -> IO Picture
 renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
   playSound sound sounds
-  return (floorAndCeiling <> walls)
+  return (floorAndCeiling <> walls <> sprites)
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -121,7 +123,9 @@ renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
 
     rayResults = map drawRay [-halfW .. halfW]
     walls = pictures $ map fst rayResults
+    zBuf = map snd rayResults
     floorAndCeiling = renderFloorAndCeiling
+    sprites = renderSprites s zBuf
 
     sound
       | S.member (Char 'w') keys = Walking
@@ -153,7 +157,7 @@ renderWall tex i pos dir (Just (p, ext, t)) = (res, dist)
 
 renderFloorAndCeiling :: Picture
 renderFloorAndCeiling = pictures (map (horLine (greyN 0.18)) [-halfH .. -1])
-                          <> pictures (map (horLine (greyN 0.18)) [2 .. halfH])
+                          <> pictures (map (horLine (greyN 0.1)) [2 .. halfH])
   where
     brownCol = makeColor 0.27 0.21 0.18 1
     halfW = i2f (fst windowSize `div` 2)
@@ -214,57 +218,29 @@ fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
 -- NPC and other non-wall objects rendering
 
-sortSprites :: Point -> [Sprite] -> [Sprite]
-sortSprites playerPos = sortOn distF
-  where
-    distF (Sprite pos _) = -magV (mulSV (-1) pos `addVV` playerPos)
-
-projectSprite :: Point -> Vector -> Sprite -> (Int, Float)
-projectSprite pos dir (Sprite spritePos _) = (spriteScreenX, transformY) 
-  where
-    halfW = i2f (fst windowSize `div` 2)
-
-    (spriteX, spriteY) = spritePos `addVV` mulSV (-1) pos
-    (planeX, planeY) = mulSV (tan (fov / 2)) (normalV dir)
-    (dirX, dirY) = dir
-    invDet = 1 / (planeX * dirY - dirX * planeY)
-    
-    transformX = invDet * (dirY * spriteX - dirX * spriteY)
-    transformY = invDet * (-planeY * spriteX + planeX * spriteY)
-
-    spriteScreenX = floor $ halfW * ( transformX / transformY)
-
-
 renderSprites :: State -> [Float] -> Picture
-renderSprites (State _ _ pos dir _ textures _ _ sprites) zBuf = pictures $ map (renderSprite textures zBuf pos dir) sorted 
+renderSprites st@(State _ _ pos dir _ textures _ _ sprites) zBuf = pictures 
+                                                                   $ map (renderSprite st) sprites
+
+renderSprite :: State -> Sprite -> Picture
+renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
+  | abs delta <= fov / 2 = (translate screenX 0
+                       $ scale (2/dist) (2/dist)
+                       $ translate offx offy
+                       $ tex (Right st)) <> scale 0.1 0.1 (color white (text (show delta)))
+  | otherwise = blank 
   where
-    halfW = fst windowSize `div` 2
-    sorted = sortSprites pos sprites
+    halfW = i2f (fst windowSize) / 2
+    (tempX, tempY) = addVV pos (mulSV (-1) ppos)
+    spriteAngle = snd (polar (tempX :+ tempY)) 
+    playerAngle = snd (polar (pdx :+ pdy)) 
+    delta = spriteAngle - playerAngle
+    screenX = tan delta * halfW
+    halfTexW = i2f (fst textureResolution) / 2
+    dist = magV (addVV pos (mulSV (-1) ppos))
 
-renderSprite :: Textures -> [Float] -> Point -> Vector -> Sprite -> Picture
-renderSprite textures zBuf playerPos dir s@(Sprite pos t) = let Bitmap tex = textures (Right t) 
-                                                             in pictures $ map (renderCol tex) xRange 
-  where
-    (screenX, transformY) = projectSprite playerPos dir s
-    halfH = i2f (snd windowSize `div` 2) 
-    textureH = i2f (snd textureResolution)
-    spriteH = textureH / transformY
-    scaleFactor = 1 / transformY 
-  
-    dx = floor (spriteH / 2) 
-    xRange = [screenX - dx .. screenX + dx] 
-
-    renderCol tex i
-      | transformY > 0
-        && (-halfW) < i && i < halfW
-        && transformY < fromMaybe 100 (zBuf !? (halfW + i))
-          = translate (i2f i) 0 $ scale 1 scaleFactor 
-            $ BitmapSection (Rectangle (floor textureX, 0) (1, floor textureH)) tex
-      | otherwise = blank
-        where
-          halfW = fst windowSize `div` 2
-          textureX = abs (i2f i - (-textureH / 2 + i2f screenX)) * textureH / (2 * i2f dx)
-
+    (offx, offy) = (-halfTexW, -halfTexW)
+    
 
 -- | Helper functions
 addVV :: Vector -> Vector -> Vector
