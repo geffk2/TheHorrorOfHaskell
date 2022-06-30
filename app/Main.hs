@@ -103,7 +103,7 @@ handleTime dt s = do
       | otherwise = playerDir s
     
     newMap
-      | S.member (Char 'e') (keysPressed s) = tryOpenDoors s
+      | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
       | otherwise = gameMap s
 
     sound
@@ -112,19 +112,17 @@ handleTime dt s = do
 
 
 tryOpenDoors :: State -> QuadTree Tile
-tryOpenDoors s@(State ext m _ (px,py) _ _ _ _ _) = fmap f m
+tryOpenDoors s@(State ext m (px,py) _ _ _ _ _ _) = removeLeaves f m
   where
     doors = checkForDoors ext m (floor px, floor py) 
-    f (Door c) = if c `elem` doors 
-                    then Air
-                    else Door c
-    f a = a
+    f (Door c) = c `elem` doors 
+    f a = False
 
 checkForDoors :: Extent -> QuadTree Tile -> Coord -> [DoorColor]
 checkForDoors ext m (x, y) = concatMap checkPoint points 
   where
     points = [(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
-    checkCell (Just (Door c)) = [c] 
+    checkCell (Just (Button c)) = [c] 
     checkCell _ = []
 
     checkPoint pos = checkCell (lookupByCoord ext pos m)
@@ -158,7 +156,7 @@ renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
 
 renderWall :: Textures -> Int -> Point -> Vector -> Maybe (Point, Extent, Tile) -> (Picture, Float)
 renderWall _ _ _ _ Nothing = (blank, 1)
-renderWall tex i pos dir (Just (p, ext, t)) = (res, dist)
+renderWall tex i pos dir (Just (p, ext, t)) = (res (tex (Left t)), dist)
   where
     screenW = i2f (fst windowSize)
     halfH = i2f (snd windowSize `div` 2)
@@ -170,13 +168,15 @@ renderWall tex i pos dir (Just (p, ext, t)) = (res, dist)
    
     scaleFactor = 2 * y / fromIntegral (snd textureResolution)
     distDarkCoef = dist / renderDistance
-    res = let 
-            Bitmap bmp = tex (Left t) 
-           in scale 1 scaleFactor
+
+    res (Bitmap bmp) = scale 1 scaleFactor
               $ translate x 0
               $ darkenImg (min 1 distDarkCoef)
               $ darkenImg 0.3
               $ hitToTexture bmp p side
+    res _ = blank
+ 
+
 
 renderFloorAndCeiling :: Picture
 renderFloorAndCeiling = pictures (map (horLine (greyN 0.18)) [-halfH .. -1])

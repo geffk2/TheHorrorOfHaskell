@@ -75,40 +75,31 @@ loadTextures = do
   wallBmp <- loadBMP "textures/wall.bmp"
   floorBmp <- loadBMP "textures/floor.bmp"
   barrelBmp <- loadBMP "textures/barrel.bmp"
+  greenButtonBmp <- loadBMP "textures/green button.bmp"
+  redButtonBmp <- loadBMP "textures/red button.bmp"
+  blueButtonBmp <- loadBMP "textures/blue button.bmp"
+  greenDoorBmp <- loadBMP "textures/green door.bmp"
+  redDoorBmp <- loadBMP "textures/red door.bmp"
+  blueDoorBmp <- loadBMP "textures/blue door.bmp"
 
-  let f (Left Floor)       = floorBmp
-      f (Left Wall)        = wallBmp
-      f (Left Air)         = blank
-      f (Left (Button dc)) = btnTexture wallBmp dc
-      f (Left (Door dc))   = doorTexture wallBmp dc
-      f (Right Barrel)     = barrelBmp
-      f (Right Enemy)      = blank
-      f (Right Pillar)     = blank
+  let f (Left Floor)          = floorBmp
+      f (Left Wall)           = wallBmp
+      f (Left Air)            = blank
+      f (Left (Button Red))   = redButtonBmp
+      f (Left (Button Green)) = greenButtonBmp
+      f (Left (Button Blue))  = blueButtonBmp
+      f (Left (Door Red))     = redDoorBmp
+      f (Left (Door Green))   = greenDoorBmp
+      f (Left (Door Blue))    = blueDoorBmp
+      f (Right Barrel)        = barrelBmp
+      f (Right Enemy)         = blank
+      f (Right Pillar)        = blank
 
   return f
 
-doorTexture :: Picture -> DoorColor -> Picture
-doorTexture p dc = p <> door
-  where
-    texSize = i2f (fst textureResolution)
-    door = translate (texSize/2) (5*texSize/8) (rectangleSolid (texSize/2) (3*texSize/4)) 
-    col = case dc of 
-      Red -> red
-      Green -> green
-      Blue -> blue
-
-btnTexture :: Picture -> DoorColor -> Picture
-btnTexture p dc = p <> btn
-  where
-    texSize = i2f (fst textureResolution)
-    btn = translate (texSize/2) (texSize/2) (circleSolid (texSize/4)) 
-    col = case dc of 
-      Red -> red
-      Green -> green
-      Blue -> blue
-
-instance Functor QuadTree  where
-  fmap _ TNil = TNil
-  fmap f (TLeaf x) = TLeaf (f x)
-  fmap f (TNode a b c d) = TNode (fmap f a) (fmap f b) (fmap f c) (fmap f d)
-
+removeLeaves :: (a -> Bool) -> QuadTree a -> QuadTree a
+removeLeaves _ TNil = TNil
+removeLeaves p (TNode a b c d) = TNode (removeLeaves p a) (removeLeaves p b) (removeLeaves p c) (removeLeaves p d)
+removeLeaves p (TLeaf x)
+  | p x = TNil
+  | otherwise = TLeaf x
