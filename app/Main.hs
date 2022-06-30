@@ -41,7 +41,7 @@ main = do
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 sprites
+  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 sprites 
   playIO window black fps st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
@@ -85,7 +85,7 @@ handleEvents _ s = return s
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
   playSound sound (sounds s)
-  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime}
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
@@ -102,9 +102,32 @@ handleTime dt s = do
       | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
       | otherwise = playerDir s
     
+    newMap
+      | S.member (Char 'e') (keysPressed s) = tryOpenDoors s
+      | otherwise = gameMap s
+
     sound
       | floor newTime `mod` 50 == 0 = Doorbell
       | otherwise                   = Silence
+
+
+tryOpenDoors :: State -> QuadTree Tile
+tryOpenDoors s@(State ext m _ (px,py) _ _ _ _ _) = fmap f m
+  where
+    doors = checkForDoors ext m (floor px, floor py) 
+    f (Door c) = if c `elem` doors 
+                    then Air
+                    else Door c
+    f a = a
+
+checkForDoors :: Extent -> QuadTree Tile -> Coord -> [DoorColor]
+checkForDoors ext m (x, y) = concatMap checkPoint points 
+  where
+    points = [(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
+    checkCell (Just (Door c)) = [c] 
+    checkCell _ = []
+
+    checkPoint pos = checkCell (lookupByCoord ext pos m)
 
 
 -- | Rendering
@@ -224,10 +247,10 @@ renderSprites st@(State _ _ pos dir _ textures _ _ sprites) zBuf = pictures
 
 renderSprite :: State -> Sprite -> Picture
 renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
-  | abs delta <= fov / 2 = (translate screenX 0
+  | abs delta <= fov / 2 = translate screenX 0
                        $ scale (2/dist) (2/dist)
                        $ translate offx offy
-                       $ tex (Right st)) <> scale 0.1 0.1 (color white (text (show delta)))
+                       $ tex (Right st) 
   | otherwise = blank 
   where
     halfW = i2f (fst windowSize) / 2

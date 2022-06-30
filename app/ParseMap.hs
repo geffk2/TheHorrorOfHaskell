@@ -13,7 +13,7 @@ parseMap mapName = do
     let rawMap = decode jsonData :: Maybe [[Int]]
     let tileMap = case rawMap of
             Nothing      -> []
-            Just someMap -> map (map (intToTile . (`mod` 2)) ) someMap
+            Just someMap -> map (map intToTile) someMap
     return tileMap
 
 saveMap :: GameMap -> IO ()
