@@ -44,8 +44,7 @@ main = do
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0
-  -- let st = State ext game (9, 9) (1, 0) S.empty textures sounds 1 sprites 0
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 False
 
   playIO window black fps st renderFrame handleEvents handleTime
   where
@@ -64,7 +63,8 @@ data State = State {
   sounds :: Sound -> Mix.Chunk,
   timePassed :: Float,
   enemy :: Sprite,
-  difficulty :: Int
+  difficulty :: Int,
+  gameOver :: Bool
 }
 
 constructMap :: GameMap -> (Extent, QuadTree Tile)
@@ -91,7 +91,7 @@ handleEvents _ s = return s
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
   playSound sound (sounds s) volume
-  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap}
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameOver = isGameOver}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
@@ -110,11 +110,21 @@ handleTime dt s = do
 
     (bx, by) = pos (enemy s)
 
-
     newDir
       | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
       | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
       | otherwise = playerDir s
+   
+    isGameOver = gameOver s 
+                  || S.member (Char 'f') (keysPressed s)
+                  && Exit `elem` checkForDoors (ext s) (gameMap s) (floor playerX, floor playerY) 
+                  && difficulty s >= 4
+
+    (playerX, playerY) = playerPos s
+    newDiff
+      | S.member (Char 'f') (keysPressed s) = difficulty s + length 
+                                                              (filter (/= Exit) (checkForDoors (ext s) (gameMap s) (floor playerX, floor playerY)))
+      | otherwise = difficulty s
 
     (newMap, hasChanged)
       | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
@@ -124,6 +134,7 @@ handleTime dt s = do
     countDistance cx cy = abs (xf - cx) + abs (yf - cy)
 
     (sound, volume)
+      | gameOver s = (Silence, 0)
       | hasChanged                    = (Click, MAX_VOLUME)
       | x == 12 && y == 19            = (Fart, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
@@ -134,12 +145,11 @@ handleTime dt s = do
       | 21 <= x && x <= 50 &&
         41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (4*countDistance 50 41)))
       | ((xf - bx)^2 +
-         (yf - by)^2) <= 25           = (Glitch, 70 - min 70 (floor (4*countDistance bx by)))  -- | todo, make it for babayca
+         (yf - by)^2) <= 25           = (Glitch, 70 - min 70 (floor (4*countDistance bx by)))  -- todo, make it for babayca
       | otherwise                     = (Silence, 0)
 
 
 tryOpenDoors :: State -> (QuadTree Tile, Bool)
--- tryOpenDoors s@(State ext m (px,py) _ _ _ _ _ _ _)
 tryOpenDoors s
   | null doors = (m, False)
   | otherwise  = (fmap replaceButtons (removeLeaves f m), True)
@@ -153,8 +163,9 @@ tryOpenDoors s
     f a = False
 
     replaceButtons (Button c)
-      | c `elem` doors = Wall
-      | otherwise      = Button c
+      | c == Exit       = Button c
+      | c `elem` doors  = Wall
+      | otherwise       = Button c
     replaceButtons tile = tile
 
 checkForDoors :: Extent -> QuadTree Tile -> Coord -> [DoorColor]
@@ -169,10 +180,15 @@ checkForDoors ext m (x, y) = concatMap checkPoint points
 
 -- | Rendering
 renderFrame :: State -> IO Picture
--- renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
 renderFrame s = do
   playSound sound sounds' volume
-  return (floorAndCeiling <> pictures wallsAndSprites)
+  if not $ gameOver s
+     then return (floorAndCeiling <> pictures wallsAndSprites) 
+     else return
+          $ translate (-(i2f halfW)) 0
+          $ scale 0.3 0.3 
+          $ color white
+          $ text "Game over. You won"
 
   where
     ext' = ext s
@@ -196,7 +212,10 @@ renderFrame s = do
     floorAndCeiling = renderFloorAndCeiling
     sprites = [renderSprite s (enemy s)]
 
-    wallsAndSprites = map fst (sortWith ((* (-1)) . snd) (sprites ++ rayResults))
+    wallsAndSprites = map fst 
+                      $ filter ((<=renderDistance).snd) 
+                      $ sortWith ((* (-1)) . snd) 
+                      $ sprites ++ rayResults
 
     textMessage = color white (scale 0.1 0.1 (text (show pos)))
 
@@ -292,11 +311,6 @@ fractionalOfV :: Vector -> Vector
 fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
 -- NPC and other non-wall objects rendering
-
--- renderSprites :: State -> [(Picture, Float)]
--- renderSprites s = map (renderSprite s) (sprites s)
-
-
 
 renderSprite :: State -> Sprite -> (Picture, Float)
 renderSprite s (Sprite pos st)

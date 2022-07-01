@@ -30,7 +30,7 @@ windowSize = (800, 600)
 textureResolution :: (Int, Int) 
 textureResolution = (250, 250)
 
-data DoorColor = Red | Green | Blue | Yellow | Cyan
+data DoorColor = Red | Green | Blue | Yellow | Cyan | Exit
   deriving (Show, Eq)
 
 data Tile = Air | Wall | Floor | Button DoorColor | Door DoorColor
@@ -40,9 +40,10 @@ type GameMap = [[Tile]]
 
 
 nTiles :: Int
-nTiles = 12
+nTiles = 13
 
 intToTile :: Int -> Tile
+intToTile 12 = Button Exit
 intToTile 11 = Door Cyan
 intToTile 10 = Door Yellow
 intToTile 9  = Door Blue
@@ -57,6 +58,7 @@ intToTile 1  = Wall
 intToTile _  = Air
 
 tileToInt :: Tile -> Int
+tileToInt (Button Exit)     = 12
 tileToInt (Door Cyan)     = 11
 tileToInt (Door Yellow)   = 10
 tileToInt (Door Blue)     = 9
@@ -70,6 +72,7 @@ tileToInt (Button Red)    = 2
 tileToInt Wall            = 1
 tileToInt Air             = 0
 tileToInt Floor           = -1
+tileToInt (Door Exit)     = -2
 
 data SpriteType = Enemy | Pillar | Barrel
   deriving (Show, Eq)
@@ -100,6 +103,7 @@ loadTextures = do
   blueDoorBmp   <- loadBMP "textures/blue door.bmp"
   cyanDoorBmp   <- loadBMP "textures/cyan door.bmp"
   yellowDoorBmp <- loadBMP "textures/yellow door.bmp"
+  exitBmp       <- loadBMP "textures/exit door.bmp"
   
 
   let f (Left Floor)           = floorBmp
@@ -111,12 +115,14 @@ loadTextures = do
       f (Left (Button Blue))   = blueButtonBmp
       f (Left (Button Yellow)) = yellowButtonBmp
       f (Left (Button Cyan))   = cyanButtonBmp
+      f (Left (Button Exit))   = exitBmp
       
-      f (Left (Door Red))      = redDoorBmp
-      f (Left (Door Green))    = greenDoorBmp
-      f (Left (Door Blue))     = blueDoorBmp
-      f (Left (Door Yellow))   = yellowDoorBmp
-      f (Left (Door Cyan))     = cyanDoorBmp
+      f (Left (Door Red))    = redDoorBmp
+      f (Left (Door Green))  = greenDoorBmp
+      f (Left (Door Blue))   = blueDoorBmp
+      f (Left (Door Yellow)) = yellowDoorBmp
+      f (Left (Door Cyan))   = cyanDoorBmp
+      f (Left (Door Exit))   = blank
 
       f (Right Barrel)         = barrelBmp
       f (Right Enemy)          = enemy
