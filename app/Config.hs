@@ -87,6 +87,7 @@ loadTextures = do
   wallBmp <- loadBMP "textures/wall.bmp"
   floorBmp <- loadBMP "textures/floor.bmp"
   barrelBmp <- loadBMP "textures/barrel.bmp"
+  enemy <- loadBMP "textures/boo.bmp"
 
   greenButtonBmp  <- loadBMP "textures/green button.bmp"
   redButtonBmp    <- loadBMP "textures/red button.bmp"
@@ -118,7 +119,7 @@ loadTextures = do
       f (Left (Door Cyan))     = cyanDoorBmp
 
       f (Right Barrel)         = barrelBmp
-      f (Right Enemy)          = blank
+      f (Right Enemy)          = enemy
       f (Right Pillar)         = blank
 
   return f

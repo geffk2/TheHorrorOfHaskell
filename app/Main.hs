@@ -39,12 +39,12 @@ main = do
   sounds <- loadSounds
 
   -- let sprites = [Sprite (6, 6) Barrel]
-  let sprites = []
+  let enemy = Sprite (19, 45) Enemy
 
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 sprites 0
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0
   -- let st = State ext game (9, 9) (1, 0) S.empty textures sounds 1 sprites 0
 
   playIO window black fps st renderFrame handleEvents handleTime
@@ -63,7 +63,7 @@ data State = State {
   textures :: Textures,
   sounds :: Sound -> Mix.Chunk,
   timePassed :: Float,
-  sprites :: [Sprite],
+  enemy :: Sprite,
   difficulty :: Int
 }
 
@@ -108,6 +108,8 @@ handleTime dt s = do
     x = floor xf
     y = floor yf
 
+    (bx, by) = pos (enemy s)
+
 
     newDir
       | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
@@ -117,7 +119,6 @@ handleTime dt s = do
     (newMap, hasChanged)
       | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
       | otherwise = (gameMap s, False)
-    
 
 
     countDistance cx cy = abs (xf - cx) + abs (yf - cy)
@@ -126,14 +127,14 @@ handleTime dt s = do
       | hasChanged                    = (Click, MAX_VOLUME)
       | x == 12 && y == 19            = (Fart, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
-         0 <= y && y <= 35 &&
-         floor newTime `mod` 120 == 0 = (Laugh, MAX_VOLUME)
+        0 <= y && y <= 35 &&
+        floor newTime `mod` 120 == 0 = (Laugh, MAX_VOLUME)
       | floor newTime `mod` 90   == 0 = (Wind, MAX_VOLUME)
+      | x == 4 && 28 <= y && y <= 30  = (Glass, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
         41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (4*countDistance 50 41)))
-      | x == 4 && 28 <= y && y <= 30  = (Glass, MAX_VOLUME)
-      | 17 <= x && x <= 21 &&
-        20 <= y && y <= 26            = (Glitch, MAX_VOLUME - min MAX_VOLUME (floor (countDistance 19 23)))  -- | todo, make it for babayca
+      | ((xf - bx)^2 +
+         (yf - by)^2) <= 25           = (Glitch, 70 - min 70 (floor (4*countDistance bx by)))  -- | todo, make it for babayca
       | otherwise                     = (Silence, 0)
 
 
@@ -193,7 +194,7 @@ renderFrame s = do
     rayResults = map drawRay [-halfW .. halfW]
     zBuf = map snd rayResults
     floorAndCeiling = renderFloorAndCeiling
-    sprites = renderSprites s
+    sprites = [renderSprite s (enemy s)]
 
     wallsAndSprites = map fst (sortWith ((* (-1)) . snd) (sprites ++ rayResults))
 
@@ -292,13 +293,12 @@ fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
 -- NPC and other non-wall objects rendering
 
-renderSprites :: State -> [(Picture, Float)]
-renderSprites s = map (renderSprite s) (sprites s)
+-- renderSprites :: State -> [(Picture, Float)]
+-- renderSprites s = map (renderSprite s) (sprites s)
 
 
 
 renderSprite :: State -> Sprite -> (Picture, Float)
--- renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
 renderSprite s (Sprite pos st)
   |  abs delta <= fov = (res, dist)
   | otherwise = (blank, dist)
