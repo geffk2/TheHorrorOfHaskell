@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BlockArguments #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Main where
 import Graphics.Gloss
@@ -17,10 +18,10 @@ import GHC.Exts (sortWith)
 
 import ParseMap (parseMap)
 import MusicPlayer
-    ( playSound, Sound(Walking, Silence, Doorbell, StopWalking), Sounds, loadSounds, initMusicPlayer )
 import SDL.Mixer (Chunk)
 import qualified SDL.Mixer as Mix
 import Config
+import SDL.Raw.Mixer
 
 -- | Aliases for functions with extra long names
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
@@ -34,14 +35,18 @@ main = do
   initMusicPlayer
 
   textures <- loadTextures
-  sampleMap <- parseMap "maps/map.json"
+  sampleMap <- parseMap "maps/customMap.json"
   sounds <- loadSounds
 
-  let sprites = [Sprite (6, 6) Barrel]
+  -- let sprites = [Sprite (6, 6) Barrel]
+  let sprites = []
+
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (8, 8) (1, 1) S.empty textures sounds 1 sprites 
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 sprites 0
+  -- let st = State ext game (9, 9) (1, 0) S.empty textures sounds 1 sprites 0
+
   playIO window black fps st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
@@ -58,7 +63,8 @@ data State = State {
   textures :: Textures,
   sounds :: Sound -> Mix.Chunk,
   timePassed :: Float,
-  sprites :: [Sprite]
+  sprites :: [Sprite],
+  difficulty :: Int
 }
 
 constructMap :: GameMap -> (Extent, QuadTree Tile)
@@ -84,7 +90,7 @@ handleEvents _ s = return s
 
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
-  playSound sound (sounds s)
+  playSound sound (sounds s) volume
   return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
@@ -97,32 +103,64 @@ handleTime dt s = do
       in if isPosTaken (i2fV newPos) then newPos `addVV` mulSV (-2*dt) speed else newPos
     newTime = timePassed s + dt
 
+    xf = fst nextPos
+    yf = snd nextPos
+    x = floor xf
+    y = floor yf
+
+
     newDir
       | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
       | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
       | otherwise = playerDir s
-    
-    newMap
+
+    (newMap, hasChanged)
       | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
-      | otherwise = gameMap s
-
-    sound
-      | floor newTime `mod` 50 == 0 = Doorbell
-      | otherwise                   = Silence
+      | otherwise = (gameMap s, False)
+    
 
 
-tryOpenDoors :: State -> QuadTree Tile
-tryOpenDoors s@(State ext m (px,py) _ _ _ _ _ _) = removeLeaves f m
+    countDistance cx cy = abs (xf - cx) + abs (yf - cy)
+
+    (sound, volume)
+      | hasChanged                    = (Click, MAX_VOLUME)
+      | x == 12 && y == 19            = (Fart, MAX_VOLUME)
+      | 21 <= x && x <= 50 &&
+         0 <= y && y <= 35 &&
+         floor newTime `mod` 120 == 0 = (Laugh, MAX_VOLUME)
+      | floor newTime `mod` 90   == 0 = (Wind, MAX_VOLUME)
+      | 21 <= x && x <= 50 &&
+        41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (4*countDistance 50 41)))
+      | x == 4 && 28 <= y && y <= 30  = (Glass, MAX_VOLUME)
+      | 17 <= x && x <= 21 &&
+        20 <= y && y <= 26            = (Glitch, MAX_VOLUME - min MAX_VOLUME (floor (countDistance 19 23)))  -- | todo, make it for babayca
+      | otherwise                     = (Silence, 0)
+
+
+tryOpenDoors :: State -> (QuadTree Tile, Bool)
+-- tryOpenDoors s@(State ext m (px,py) _ _ _ _ _ _ _)
+tryOpenDoors s
+  | null doors = (m, False)
+  | otherwise  = (fmap replaceButtons (removeLeaves f m), True)
   where
-    doors = checkForDoors ext m (floor px, floor py) 
-    f (Door c) = c `elem` doors 
+    ext'     = ext s
+    m        = gameMap s
+    (px, py) = playerPos s
+
+    doors = checkForDoors ext' m (floor px, floor py)
+    f (Door c) = c `elem` doors
     f a = False
 
+    replaceButtons (Button c)
+      | c `elem` doors = Wall
+      | otherwise      = Button c
+    replaceButtons tile = tile
+
 checkForDoors :: Extent -> QuadTree Tile -> Coord -> [DoorColor]
-checkForDoors ext m (x, y) = concatMap checkPoint points 
+checkForDoors ext m (x, y) = concatMap checkPoint points
   where
     points = [(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
-    checkCell (Just (Button c)) = [c] 
+    checkCell (Just (Button c)) = [c]
     checkCell _ = []
 
     checkPoint pos = checkCell (lookupByCoord ext pos m)
@@ -130,29 +168,41 @@ checkForDoors ext m (x, y) = concatMap checkPoint points
 
 -- | Rendering
 renderFrame :: State -> IO Picture
-renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
-  playSound sound sounds
+-- renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
+renderFrame s = do
+  playSound sound sounds' volume
   return (floorAndCeiling <> pictures wallsAndSprites)
+
   where
+    ext' = ext s
+    m   = gameMap s
+    pos = playerPos s
+    dir = playerDir s
+    keys = keysPressed s
+    textures' = textures s
+    sounds' = sounds s
+
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
 
     drawRay i = let
         vecDir = rotateV (i2f i * fov / screenW) dir
         end = pos `addVV` mulSV renderDistance vecDir
-      in renderWall textures i pos dir (raycast pos end ext m)
+      in renderWall textures' i pos dir (raycast pos end ext' m)
 
     rayResults = map drawRay [-halfW .. halfW]
     zBuf = map snd rayResults
     floorAndCeiling = renderFloorAndCeiling
-    sprites = renderSprites s 
+    sprites = renderSprites s
 
     wallsAndSprites = map fst (sortWith ((* (-1)) . snd) (sprites ++ rayResults))
 
-    sound
-      | S.member (Char 'w') keys = Walking
-      | S.member (Char 's') keys = Walking
-      | otherwise                = StopWalking
+    textMessage = color white (scale 0.1 0.1 (text (show pos)))
+
+    (sound, volume)
+      | S.member (Char 'w') keys = (Walking, MAX_VOLUME)
+      | S.member (Char 's') keys = (Walking, MAX_VOLUME)
+      | otherwise                = (StopWalking, 0)
 
 
 renderWall :: Textures -> Int -> Point -> Vector -> Maybe (Point, Extent, Tile) -> (Picture, Float)
@@ -166,7 +216,7 @@ renderWall tex i pos dir (Just (p, ext, t)) = (res (tex (Left t)), dist)
     col = wallColor t side
     x = i2f i
     y = halfH / dist
-   
+
     scaleFactor = 2 * y / fromIntegral (snd textureResolution)
     distDarkCoef = dist / renderDistance
 
@@ -176,7 +226,7 @@ renderWall tex i pos dir (Just (p, ext, t)) = (res (tex (Left t)), dist)
               $ darkenImg 0.3
               $ hitToTexture bmp p side
     res _ = blank
- 
+
 
 
 renderFloorAndCeiling :: Picture
@@ -191,8 +241,8 @@ renderFloorAndCeiling = pictures (map (horLine (greyN 0.18)) [-halfH .. -1])
                  in color (darkenColor (min 1 darkCoef) col)
                     $ line [(-halfW, y), (halfW, y)]
 
-                  
-    
+
+
 
 wallColor :: Tile -> Side -> Color
 wallColor Wall W = dark $ dark $ dark red
@@ -243,23 +293,31 @@ fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 -- NPC and other non-wall objects rendering
 
 renderSprites :: State -> [(Picture, Float)]
-renderSprites st@(State _ _ pos dir _ textures _ _ sprites) = map (renderSprite st) sprites
+renderSprites s = map (renderSprite s) (sprites s)
+
+
 
 renderSprite :: State -> Sprite -> (Picture, Float)
-renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
+-- renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
+renderSprite s (Sprite pos st)
   |  abs delta <= fov = (res, dist)
   | otherwise = (blank, dist)
+
   where
+    ppos = playerPos s
+    (pdx, pdy) = playerDir s
+    tex = textures s
+
     halfW = i2f (fst windowSize) / 2
     (tempX, tempY) = addVV pos (mulSV (-1) ppos)
-    spriteAngle = snd (polar (tempX :+ tempY)) 
-    playerAngle = snd (polar (pdx :+ pdy)) 
+    spriteAngle = snd (polar (tempX :+ tempY))
+    playerAngle = snd (polar (pdx :+ pdy))
 
     delta = let d = spriteAngle - playerAngle
-              in if d < -pi 
+              in if d < -pi
                     then d + pi*2
                     else d
-                    
+
     darken alpha = color (makeColor 0 0 0 0) (rectangleSolid texW texW) -- no shading at all bc it works badly
     res = translate screenX 0
                        $ scale (2/dist) (2/dist)
@@ -271,7 +329,7 @@ renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
     dist = magV (addVV pos (mulSV (-1) ppos)) * cos delta
 
     (offx, offy) = (-halfTexW, -halfTexW)
-    
+
 
 -- | Helper functions
 addVV :: Vector -> Vector -> Vector
