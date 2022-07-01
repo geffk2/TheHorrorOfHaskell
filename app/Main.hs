@@ -11,9 +11,9 @@ import Graphics.Gloss.Data.Extent
 
 import qualified Data.Set as S
 import Data.Maybe ( fromMaybe, isJust )
-import Data.List
-import Data.Matrix
 import Data.Complex
+
+import GHC.Exts (sortWith)
 
 import ParseMap (parseMap)
 import MusicPlayer
@@ -132,7 +132,7 @@ checkForDoors ext m (x, y) = concatMap checkPoint points
 renderFrame :: State -> IO Picture
 renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
   playSound sound sounds
-  return (floorAndCeiling <> walls <> sprites)
+  return (floorAndCeiling <> pictures wallsAndSprites)
   where
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -143,10 +143,11 @@ renderFrame s@(State ext m pos dir keys textures sounds _ _) = do
       in renderWall textures i pos dir (raycast pos end ext m)
 
     rayResults = map drawRay [-halfW .. halfW]
-    walls = pictures $ map fst rayResults
     zBuf = map snd rayResults
     floorAndCeiling = renderFloorAndCeiling
-    sprites = renderSprites s zBuf
+    sprites = renderSprites s 
+
+    wallsAndSprites = map fst (sortWith ((* (-1)) . snd) (sprites ++ rayResults))
 
     sound
       | S.member (Char 'w') keys = Walking
@@ -241,26 +242,33 @@ fractionalOfV (x, y) = (snd (properFraction x), snd (properFraction y))
 
 -- NPC and other non-wall objects rendering
 
-renderSprites :: State -> [Float] -> Picture
-renderSprites st@(State _ _ pos dir _ textures _ _ sprites) zBuf = pictures 
-                                                                   $ map (renderSprite st) sprites
+renderSprites :: State -> [(Picture, Float)]
+renderSprites st@(State _ _ pos dir _ textures _ _ sprites) = map (renderSprite st) sprites
 
-renderSprite :: State -> Sprite -> Picture
+renderSprite :: State -> Sprite -> (Picture, Float)
 renderSprite (State _ _ ppos (pdx,pdy) _ tex _ _ _) (Sprite pos st)
-  | abs delta <= fov / 2 = translate screenX 0
-                       $ scale (2/dist) (2/dist)
-                       $ translate offx offy
-                       $ tex (Right st) 
-  | otherwise = blank 
+  |  abs delta <= fov = (res, dist)
+  | otherwise = (blank, dist)
   where
     halfW = i2f (fst windowSize) / 2
     (tempX, tempY) = addVV pos (mulSV (-1) ppos)
     spriteAngle = snd (polar (tempX :+ tempY)) 
     playerAngle = snd (polar (pdx :+ pdy)) 
-    delta = spriteAngle - playerAngle
+
+    delta = let d = spriteAngle - playerAngle
+              in if d < -pi 
+                    then d + pi*2
+                    else d
+                    
+    darken alpha = color (makeColor 0 0 0 0) (rectangleSolid texW texW) -- no shading at all bc it works badly
+    res = translate screenX 0
+                       $ scale (2/dist) (2/dist)
+                       $ translate 0 offy
+                       $ tex (Right st) <> darken (min 1 (dist/renderDistance))
     screenX = tan delta * halfW
     halfTexW = i2f (fst textureResolution) / 2
-    dist = magV (addVV pos (mulSV (-1) ppos))
+    texW = i2f (fst textureResolution)
+    dist = magV (addVV pos (mulSV (-1) ppos)) * cos delta
 
     (offx, offy) = (-halfTexW, -halfTexW)
     
