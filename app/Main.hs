@@ -13,6 +13,7 @@ import Graphics.Gloss.Data.Extent
 import qualified Data.Set as S
 import Data.Maybe ( fromMaybe, isJust )
 import Data.Complex
+import Data.Bifunctor
 
 import GHC.Exts (sortWith)
 
@@ -44,7 +45,7 @@ main = do
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 False
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 True
 
   playIO window black fps st renderFrame handleEvents handleTime
   where
@@ -117,13 +118,13 @@ handleTime dt s = do
    
     isGameOver = gameOver s 
                   || S.member (Char 'f') (keysPressed s)
-                  && Exit `elem` checkForDoors (ext s) (gameMap s) (floor playerX, floor playerY) 
+                  && Exit `elem` checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY) 
                   && difficulty s >= 4
 
     (playerX, playerY) = playerPos s
     newDiff
       | S.member (Char 'f') (keysPressed s) = difficulty s + length 
-                                                              (filter (/= Exit) (checkForDoors (ext s) (gameMap s) (floor playerX, floor playerY)))
+                                                              (filter (/= Exit) (checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY)))
       | otherwise = difficulty s
 
     (newMap, hasChanged)
@@ -134,7 +135,7 @@ handleTime dt s = do
     countDistance cx cy = abs (xf - cx) + abs (yf - cy)
 
     (sound, volume)
-      | gameOver s = (Silence, 0)
+      | gameOver s = (Menu, MAX_VOLUME)
       | hasChanged                    = (Click, MAX_VOLUME)
       | x == 12 && y == 19            = (Fart, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
@@ -158,7 +159,7 @@ tryOpenDoors s
     m        = gameMap s
     (px, py) = playerPos s
 
-    doors = checkForDoors ext' m (floor px, floor py)
+    doors = checkForButtons ext' m (floor px, floor py)
     f (Door c) = c `elem` doors
     f a = False
 
@@ -168,12 +169,21 @@ tryOpenDoors s
       | otherwise       = Button c
     replaceButtons tile = tile
 
-checkForDoors :: Extent -> QuadTree Tile -> Coord -> [DoorColor]
-checkForDoors ext m (x, y) = concatMap checkPoint points
+checkForButtons :: Extent -> QuadTree Tile -> Coord -> [DoorColor]
+checkForButtons ext m (x, y) = concatMap checkPoint points
   where
     points = [(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
     checkCell (Just (Button c)) = [c]
     checkCell _ = []
+
+    checkPoint pos = checkCell (lookupByCoord ext pos m)
+
+checkForDoors :: Extent -> QuadTree Tile -> Coord -> Bool
+checkForDoors ext m (x, y) = any checkPoint points
+  where
+    points = [(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
+    checkCell (Just (Door c)) = True 
+    checkCell _ = False
 
     checkPoint pos = checkCell (lookupByCoord ext pos m)
 
@@ -183,7 +193,7 @@ renderFrame :: State -> IO Picture
 renderFrame s = do
   playSound sound sounds' volume
   if not $ gameOver s
-     then return (floorAndCeiling <> pictures wallsAndSprites) 
+     then return (floorAndCeiling <> pictures wallsAndSprites <> screenText) 
      else return
           $ translate (-(i2f halfW)) 0
           $ scale 0.3 0.3 
@@ -194,6 +204,7 @@ renderFrame s = do
     ext' = ext s
     m   = gameMap s
     pos = playerPos s
+    posI = bimap floor floor pos  
     dir = playerDir s
     keys = keysPressed s
     textures' = textures s
@@ -211,6 +222,21 @@ renderFrame s = do
     zBuf = map snd rayResults
     floorAndCeiling = renderFloorAndCeiling
     sprites = [renderSprite s (enemy s)]
+
+    screenText = if any (/= Exit) (checkForButtons ext' m posI)
+                    then translate (-i2f halfW/2) 0
+                         $ scale 0.2 0.2
+                         $ color white
+                         $ text "Press F to press the button"
+                    else blank
+                 <>
+                 if checkForDoors ext' m posI 
+                    then translate (-i2f halfW/2) 20
+                         $ scale 0.2 0.2
+                         $ color white
+                         $ text "Find a button to open this door"
+                    else
+                      blank
 
     wallsAndSprites = map fst 
                       $ filter ((<=renderDistance).snd) 
