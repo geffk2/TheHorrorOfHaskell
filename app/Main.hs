@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BlockArguments #-}
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Main where
 import Graphics.Gloss
@@ -45,7 +44,7 @@ main = do
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 True
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 False
 
   playIO window black fps st renderFrame handleEvents handleTime
   where

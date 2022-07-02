@@ -102,11 +102,18 @@ sdl2_mixer-2.0.4
 
 ### Run game
 
-Type in shell two command:
+Type in shell:
 ```shell
-$ cabal build
-$ cabal run
+$ cabal run thehorrorofhaskell
 ```
+to launch the game
+
+or
+```shell
+$ cabal run mapeditor
+```
+to launch the map editor
+
 If window `boo` appeared, you succesfully finished your configuration!
 
 
@@ -120,12 +127,26 @@ However there you are not alone in the house, something strange is also with you
 
 ### Controls
 This game require only keyboard, so here is the list of all buttons and their functionallity:
-
+Game:
 * `w - move forwars`
 * `a - turn left` 
 * `s - move backeards`
 * `d - turn right`
+* `f - press button`
 
+Map editor:
+* `w - move view upwards`
+* `s - move view downwards`
+* `a - move view left`
+* `d - move view right`
+* `i - move pointer upwards`
+* `k - move pointer downwards`
+* `j - move pointer left`
+* `l - move pointer right`
+* `h - place tile`
+* `q - previous tile`
+* `e - next tile`
+* `shift+s - save to file`
 Important to mention that all buttons are **key sensitive**!
 
 
