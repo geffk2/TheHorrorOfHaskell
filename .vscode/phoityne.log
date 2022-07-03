@@ -1,0 +1,8 @@
+2022-07-03 12:59:11.145559429000 [119313(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
+2022-07-03 13:00:00.315653428000 [119421(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
+2022-07-03 13:00:12.634620603000 [119495(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
+2022-07-03 13:01:15.969728800000 [120560(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
+2022-07-03 13:02:01.000004973000 [120660(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
+2022-07-03 13:03:07.628453339000 [120796(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
+2022-07-03 21:44:45.924442164000 [192627(ThreadId 13)] ERROR APP - user error (<getModule> loaded module can not find from path. </home/biktracker/Документы/TheHorrorOfHaskell-main/app/Main.hs> [])
+2022-07-03 21:44:45.978806051000 [192627(ThreadId 13)] ERROR APP - start debugging failed. user error (ExecResult not found.) : Left "user error (ExecResult not found.)"
