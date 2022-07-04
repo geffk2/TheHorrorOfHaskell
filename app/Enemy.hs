@@ -61,8 +61,8 @@ graph ex tree = mkGraph lnode (edgeConvert (makeLEdge [] lnode lnode))
   where
     lnode = makeLNode ex tree [] (0, 0)
 
-bfs :: Extent -> QuadTree Tile -> Point -> Point -> [(Int, Int)]
-bfs ex tree (bx,by) (hx,hy) = analyze (Data.Graph.Inductive.Query.BFS.esp (x''+(y''*49)) (x'+(y'*49)) (graph ex tree))
+bfs :: Gr Integer Integer -> Point -> Point -> [(Int, Int)]
+bfs graph (bx,by) (hx,hy) = analyze (Data.Graph.Inductive.Query.BFS.esp (x''+(y''*49)) (x'+(y'*49)) graph)
   where
     x'' = round bx
     y'' = round by

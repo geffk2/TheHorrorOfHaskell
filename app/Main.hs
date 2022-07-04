@@ -26,6 +26,7 @@ import SDL.Raw.Mixer
 import Enemy
 import Data.List.NonEmpty (nonEmpty)
 import Control.Parallel.Strategies
+import Data.Graph.Inductive
 
 -- | Aliases for functions with extra long names
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
@@ -36,7 +37,7 @@ raytrace = traceSegIntoCellularQuadTree
 
 myTail :: [a] -> [a]
 myTail (x:xs) = xs
-myTail [] = []    
+myTail [] = []
 
 main :: IO ()
 
@@ -49,12 +50,13 @@ main = do
   --sounds <- loadSounds
 
   -- let sprites = [Sprite (6, 6) Barrel]
-  let enemy = Sprite (10,48) Enemy
+  let enemy = Sprite (22, 48) Enemy
 
 
   let (ext, game) = constructMap sampleMap
+  let graph = mkGraph (makeLNode ext game [] (0, 0)) (edgeConvert (makeLEdge [] (makeLNode ext game [] (0, 0)) (makeLNode ext game [] (0, 0))))
 
-  let st = State ext game (10, 43) (1, 0) S.empty textures 1 enemy [] 0 False
+  let st = State ext game (10, 43) (1, 0) S.empty textures 1 enemy [] 0 graph  False
 
   playIO window black fps st renderFrame handleEvents handleTime
   where
@@ -74,6 +76,7 @@ data State = State {
   enemy :: Sprite,
   enemyPath :: [(Int, Int)],
   difficulty :: Int,
+  graph :: Gr Integer Integer,
   gameOver :: Bool
 }
 
@@ -100,7 +103,8 @@ handleEvents _ s = return s
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
  -- playSound sound (sounds s) volume
-  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, enemy=updateEnemy, gameOver = isGameOver, enemyPath = newEnemyPath}
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff,
+                               enemy=updateEnemy, gameOver = isGameOver, enemyPath = newEnemyPath, Main.graph=remakeGraph}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
@@ -114,12 +118,12 @@ handleTime dt s = do
     (bx, by) = pos (enemy s)
 
     newEnemyPath = do
-      if difficulty s >= 0 && (length (enemyPath s) == 0) then withStrategy rdeepseq (bfs (ext s) (gameMap s) (pos (enemy s)) (playerPos s))
-        else if difficulty s >= 0 then withStrategy rseq tail (enemyPath s)
+      if difficulty s >= 3 && (length (enemyPath s) == 0) then withStrategy rdeepseq (Enemy.bfs (Main.graph s) (pos (enemy s)) (playerPos s))
+        else if difficulty s >= 3 then withStrategy rseq tail (enemyPath s)
           else
             enemyPath s
 
-     
+
 
 --14 44
     updateEnemyPosition :: Float -> (Int, Int) -> Point
@@ -138,15 +142,15 @@ handleTime dt s = do
 
 
     updateEnemy
-    --  | (difficulty s) == 0 = Sprite (bx, by) Enemy
-      
-    --  | (difficulty s) == 1 = Sprite (bx, by) Enemy
-    --  | (difficulty s) == 2 = Sprite (stupidMoving) Enemy
+      | (difficulty s) == 0 = Sprite (bx, by) Enemy
 
-      | (difficulty s) == 0 = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.03 ( (enemyPath s) !! 0)) Enemy
+      | (difficulty s) == 1 = Sprite (bx, by) Enemy
+      | (difficulty s) == 2 = Sprite (bx, by) Enemy
+
+      | (difficulty s) == 3 = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.3 ( (enemyPath s) !! 0)) Enemy
                                 else Sprite (bx, by) Enemy
 
-      | otherwise = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.06 ( (enemyPath s) !! 0)) Enemy
+      | otherwise = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.6 ( (enemyPath s) !! 0)) Enemy
                                 else Sprite (bx, by) Enemy
 
     --Improve
@@ -189,6 +193,9 @@ handleTime dt s = do
       | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
       | otherwise = (gameMap s, False)
 
+    remakeGraph
+      | S.member (Char 'f') (keysPressed s) = mkGraph (makeLNode (ext s) (fst (tryOpenDoors s)) [] (0, 0)) (edgeConvert (makeLEdge [] (makeLNode (ext s) ((fst (tryOpenDoors s))) [] (0, 0)) (makeLNode (ext s) ((fst (tryOpenDoors s))) [] (0, 0))))
+      | otherwise = Main.graph s
 
     countDistance cx cy = abs (xf - cx) + abs (yf - cy)
 
