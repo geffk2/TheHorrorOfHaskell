@@ -1,15 +1,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BlockArguments #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use isNothing" #-}
 
 module Main where
 import Graphics.Gloss
 import Graphics.Gloss.Algorithms.RayCast
 import Graphics.Gloss.Data.QuadTree
-import Graphics.Gloss.Data.Vector ( magV, mulSV, rotateV )
+import Graphics.Gloss.Data.Vector
 import Graphics.Gloss.Interface.IO.Game
-    ( Key(Char), Event(EventKey), playIO, KeyState(Up, Down) )
 import Graphics.Gloss.Data.Extent
 
 import qualified Data.Set as S
@@ -25,10 +22,6 @@ import SDL.Mixer (Chunk)
 import qualified SDL.Mixer as Mix
 import Config
 import SDL.Raw.Mixer
-import Enemy
-import Data.List.NonEmpty (nonEmpty)
-import Control.Parallel.Strategies
-import Data.Graph.Inductive
 
 -- | Aliases for functions with extra long names
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
@@ -36,35 +29,30 @@ raycast = castSegIntoCellularQuadTree
 
 raytrace :: Point -> Point -> Extent -> QuadTree a -> [(Point, Extent, a)]
 raytrace = traceSegIntoCellularQuadTree
-
-myTail :: [a] -> [a]
-myTail (x:xs) = xs
-myTail [] = []
-
 main :: IO ()
 
 main = do
-  textures <- loadTextures
-  sampleMap <- parseMap "maps/customMap.json"
   initMusicPlayer
 
+  textures <- loadTextures
+  sampleMap <- parseMap "maps/customMap.json"
   sounds <- loadSounds
-  -- let sprites = [Sprite (6, 6) Barrel]
-  let enemy = Sprite (23, 20) Enemy
+
+  let enemy = Sprite (32.5, 20.5) Enemy
 
 
   let (ext, game) = constructMap sampleMap
-  let graph = mkGraph (makeLNode ext game [] (0, 0)) (edgeConvert (makeLEdge [] (makeLNode ext game [] (0, 0)) (makeLNode ext game [] (0, 0))))
-
-  let st = State ext game (10, 43) (1, 0) S.empty textures sounds 1 enemy [] 0 Playing graph
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 Playing
 
   playIO window black fps st renderFrame handleEvents handleTime
   where
-    window = InWindow "Boo" windowSize (700, 200)
+    window = InWindow "Boo" windowSize (800, 300)
 
 
 data GameState = Playing | Win | Loose
   deriving Eq 
+
+
 
 -- | All about the state
 data State = State {
@@ -77,10 +65,8 @@ data State = State {
   sounds :: Sound -> Mix.Chunk,
   timePassed :: Float,
   enemy :: Sprite,
-  enemyPath :: [(Int, Int)],
   difficulty :: Int,
-  gameState :: GameState,
-  graph :: Gr Integer Integer
+  gameState :: GameState
 }
 
 constructMap :: GameMap -> (Extent, QuadTree Tile)
@@ -96,6 +82,7 @@ constructMap m = (ext, foldr insTile emptyTree tiles)
     insTile (Just tile, c) t = fromMaybe t (insertByCoord ext c tile t)
     insTile (Nothing, _)  t  = t
 
+
 -- | Handlers
 handleEvents :: Event -> State -> IO State
 handleEvents (EventKey k Down _ _) s = return s{keysPressed = S.insert k (keysPressed s)}
@@ -106,29 +93,49 @@ handleEvents _ s = return s
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
   playSound sound (sounds s) volume
-  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameState = newGameState,
-                               enemy=updateEnemy, enemyPath = newEnemyPath, Main.graph=remakeGraph}
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameState = newGameState}
   where
-    vel = 5
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
             `addVV` keyToDir (Char 's') (mulSV (-1) (playerDir s))
-    nextPos = withStrategy rpar let
-        newPos = playerPos s `addVV` mulSV (vel*dt) speed
+    nextPos = let
+        newPos = playerPos s `addVV` mulSV (2*dt) speed
         i2fV (x, y) = (floor x, floor y)
         isPosTaken p = isJust (lookupByCoord (ext s) p (gameMap s))
-      in if isPosTaken (i2fV newPos) then newPos `addVV` mulSV (-vel*dt) speed else newPos
+      in if isPosTaken (i2fV newPos) then newPos `addVV` mulSV (-2*dt) speed else newPos
+    newTime = timePassed s + dt
 
+    xf = fst nextPos
+    yf = snd nextPos
+    x = floor xf
+    y = floor yf
+
+    (bx, by) = pos (enemy s)
+
+    newDir
+      | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
+      | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
+      | otherwise = playerDir s
+    
+   
     newGameState
-      | ((xf - bx)^2 +
-         (yf - by)^2) <= 
-         2^2                 = Loose
       | S.member (Char 'f') (keysPressed s)
         && Exit `elem` checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY) 
         && difficulty s >= 4 = Win
       | otherwise = gameState s
 
-    (bx, by) = pos (enemy s)
+
+    (playerX, playerY) = playerPos s
+    newDiff
+      | S.member (Char 'f') (keysPressed s) = difficulty s + length 
+                                                              (filter (/= Exit) (checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY)))
+      | otherwise = difficulty s
+
+    (newMap, hasChanged)
+      | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
+      | otherwise = (gameMap s, False)
+
+
     countDistance cx cy = abs (xf - cx) + abs (yf - cy)
 
     (sound, volume)
@@ -137,99 +144,15 @@ handleTime dt s = do
       | x == 12 && y == 19            = (Fart, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
         0 <= y && y <= 35 &&
-        floor newTime `mod` 120 == 0  = (Laugh, MAX_VOLUME)
+        floor newTime `mod` 120 == 0 = (Laugh, MAX_VOLUME)
       | floor newTime `mod` 90   == 0 = (Wind, MAX_VOLUME)
       | x == 4 && 28 <= y && y <= 30  = (Glass, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
-        41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (4*countDistance 50 41)))
+        41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (7*countDistance 30 45)))
       | ((xf - bx)^2 +
          (yf - by)^2) <= 
-         2^2                          = (Scream, MAX_VOLUME)
-      | ((xf - bx)^2 +
-        (yf - by)^2) <= 
-        15^2                          = (Glitch, 70 - min 70 (floor (7*countDistance bx by)))
+         15^2                         = (Glitch, 70 - min 70 (floor (7*countDistance bx by)))  -- todo, make it for babayca
       | otherwise                     = (Silence, 0)
-
-    newEnemyPath = do
-      if difficulty s >= 2 && (length (enemyPath s) == 0) then withStrategy rdeepseq (Enemy.bfs (Main.graph s) (pos (enemy s)) (playerPos s))
-        else if difficulty s >= 2 then withStrategy rseq tail (enemyPath s)
-          else
-            enemyPath s
-
-
-
---14 44
-    updateEnemyPosition :: Float -> (Int, Int) -> Point
-    updateEnemyPosition f (x, y)
-      | x' < bx' =  (bx-f, by)
-      | x' > bx' =  (bx+f, by)
-      | y' < by' =  (bx, by-f)
-      | y' > by' =  (bx, by+f)
-      | x' == bx' && y == by' = (bx, by)
-        where
-          bx'= round bx
-          by' = round by
-          x' = fst (head (enemyPath s))
-          y' = snd (head (enemyPath s))
-    updateEnemyPosition f (_, _) = pos (enemy s)
-
-
-    updateEnemy
-      | (difficulty s) == 0 = Sprite (bx, by) Enemy
-
-      | (difficulty s) == 1 = Sprite (bx, by) Enemy
-      | (difficulty s) == 2 = smartEnemy (0.5*dt)
-
-      | (difficulty s) == 3 = smartEnemy (1.2*dt)
-
-      | otherwise = smartEnemy (1.7*dt)
-        where                 
-          smartEnemy f = if not (null (enemyPath s)) then Sprite (updateEnemyPosition f ( (enemyPath s) !! 0)) Enemy
-                                else do
-                                  if isJust (lookupByCoord (ext s) (round bx, round by) (gameMap s)) then if lookupByCoord (ext s) (round (bx+1), round by) (gameMap s) == Nothing then Sprite (bx+1, by) Enemy
-                                                                             else if lookupByCoord (ext s) (round bx, round by) (gameMap s) == Nothing then Sprite (bx-1, by) Enemy
-                                                                             else if lookupByCoord (ext s) (round bx, round by) (gameMap s) == Nothing then Sprite (bx, by-1) Enemy
-                                                                             else Sprite (bx, by+1) Enemy
-                                  else Sprite (bx, by) Enemy         
-
-    --Improve
-    stupidMoving :: Point
-    stupidMoving
-      | floor a `mod` 3 == 0 && even (floor b) = (bx+0.1, by)
-      | floor a `mod` 3 == 1 && floor b `mod` 2 == 1 = (bx-0.1, by)
-      | floor a `mod` 3 == 0 && floor b `mod` 2 == 1 = (bx, by+0.1)
-      | floor a `mod` 3 == 1 && even (floor b) = (bx, by-0.1)
-      | otherwise = (bx, by)
-      where
-        a = bx+fst(playerPos s)
-        b = by+snd(playerPos s)
-
-
-    newTime = timePassed s + dt
-    xf = fst nextPos
-    yf = snd nextPos
-    x = floor xf
-    y = floor yf
-
-
-    newDir
-      | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
-      | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
-      | otherwise = playerDir s
-
-    (playerX, playerY) = playerPos s
-    newDiff
-      | S.member (Char 'f') (keysPressed s) = difficulty s + length
-                                                              (filter (/= Exit) (checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY)))
-      | otherwise = difficulty s
-
-    (newMap, hasChanged)
-      | S.member (Char 'f') (keysPressed s) = tryOpenDoors s
-      | otherwise = (gameMap s, False)
-
-    remakeGraph
-      | S.member (Char 'f') (keysPressed s) = mkGraph (makeLNode (ext s) (fst (tryOpenDoors s)) [] (0, 0)) (edgeConvert (makeLEdge [] (makeLNode (ext s) ((fst (tryOpenDoors s))) [] (0, 0)) (makeLNode (ext s) ((fst (tryOpenDoors s))) [] (0, 0))))
-      | otherwise = Main.graph s
 
 
 tryOpenDoors :: State -> (QuadTree Tile, Bool)
@@ -264,7 +187,7 @@ checkForDoors :: Extent -> QuadTree Tile -> Coord -> Bool
 checkForDoors ext m (x, y) = any checkPoint points
   where
     points = [(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
-    checkCell (Just (Door c)) = True
+    checkCell (Just (Door c)) = True 
     checkCell _ = False
 
     checkPoint pos = checkCell (lookupByCoord ext pos m)
@@ -291,17 +214,11 @@ renderFrame s = do
     ext' = ext s
     m   = gameMap s
     pos = playerPos s
-    posI = bimap floor floor pos
+    posI = bimap floor floor pos  
     dir = playerDir s
     keys = keysPressed s
     textures' = textures s
     sounds' = sounds s
-
-    debugText = scale 0.3 0.3 
-                $ color white
-                $ text 
-                $ show 
-                $ difficulty s
 
     halfW = fst windowSize `div` 2
     screenW = i2f (fst windowSize)
@@ -316,6 +233,11 @@ renderFrame s = do
     floorAndCeiling = renderFloorAndCeiling
     sprites = [renderSprite s (enemy s)]
 
+    debugText = scale 0.2 0.2
+                $ color white
+                $ text
+                $ show pos
+
     screenText = if any (/= Exit) (checkForButtons ext' m posI)
                     then translate (-i2f halfW/2) 0
                          $ scale 0.2 0.2
@@ -323,7 +245,7 @@ renderFrame s = do
                          $ text "Press F to press the button"
                     else blank
                  <>
-                 if checkForDoors ext' m posI
+                 if checkForDoors ext' m posI 
                     then translate (-i2f halfW/2) 20
                          $ scale 0.2 0.2
                          $ color white
@@ -331,18 +253,18 @@ renderFrame s = do
                     else
                       blank
 
-    wallsAndSprites = map fst
-                      $ filter ((<=renderDistance).snd)
-                      $ sortWith ((* (-1)) . snd)
+    wallsAndSprites = map fst 
+                      $ filter ((<=renderDistance).snd) 
+                      $ sortWith ((* (-1)) . snd) 
                       $ sprites ++ rayResults
 
     textMessage = color white (scale 0.1 0.1 (text (show pos)))
-
 
     (sound, volume)
       | S.member (Char 'w') keys = (Walking, MAX_VOLUME)
       | S.member (Char 's') keys = (Walking, MAX_VOLUME)
       | otherwise                = (StopWalking, 0)
+
 
 renderWall :: Textures -> Int -> Point -> Vector -> Maybe (Point, Extent, Tile) -> (Picture, Float)
 renderWall _ _ _ _ Nothing = (blank, 1)
@@ -470,3 +392,4 @@ addVV (x0, y0) (x1, y1) = (x0 + x1, y0 + y1)
 
 normalV :: Vector -> Vector
 normalV (x, y) = (y, -x)
+
