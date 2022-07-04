@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BlockArguments #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use isNothing" #-}
 
 module Main where
 import Graphics.Gloss
@@ -134,10 +136,10 @@ handleTime dt s = do
       | y' > by' =  (bx, by+f)
       | x' == bx' && y == by' = (bx, by)
         where
-          bx'= floor bx
-          by' = floor by
-          x' = fst ((enemyPath s) !! 0)
-          y' = snd ((enemyPath s) !! 0)
+          bx'= round bx
+          by' = round by
+          x' = fst (head (enemyPath s))
+          y' = snd (head (enemyPath s))
     updateEnemyPosition f (_, _) = pos (enemy s)
 
 
@@ -147,11 +149,17 @@ handleTime dt s = do
       | (difficulty s) == 1 = Sprite (bx, by) Enemy
       | (difficulty s) == 2 = Sprite (bx, by) Enemy
 
-      | (difficulty s) == 3 = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.3 ( (enemyPath s) !! 0)) Enemy
-                                else Sprite (bx, by) Enemy
+      | (difficulty s) == 3 = smartEnemy 0.05
 
-      | otherwise = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.6 ( (enemyPath s) !! 0)) Enemy
-                                else Sprite (bx, by) Enemy
+      | otherwise = smartEnemy 0.2
+        where                 
+          smartEnemy f = if not (null (enemyPath s)) then Sprite (updateEnemyPosition f ( (enemyPath s) !! 0)) Enemy
+                                else do
+                                  if isJust (lookupByCoord (ext s) (round bx, round by) (gameMap s)) then if lookupByCoord (ext s) (round (bx+1), round by) (gameMap s) == Nothing then Sprite (bx+1, by) Enemy
+                                                                             else if lookupByCoord (ext s) (round bx, round by) (gameMap s) == Nothing then Sprite (bx-1, by) Enemy
+                                                                             else if lookupByCoord (ext s) (round bx, round by) (gameMap s) == Nothing then Sprite (bx, by-1) Enemy
+                                                                             else Sprite (bx, by+1) Enemy
+                                  else Sprite (bx, by) Enemy         
 
     --Improve
     stupidMoving :: Point
