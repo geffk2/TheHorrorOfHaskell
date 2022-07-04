@@ -109,7 +109,7 @@ handleTime dt s = do
   return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameState = newGameState,
                                enemy=updateEnemy, enemyPath = newEnemyPath, Main.graph=remakeGraph}
   where
-    vel = 5
+    vel = 2
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
             `addVV` keyToDir (Char 's') (mulSV (-1) (playerDir s))
