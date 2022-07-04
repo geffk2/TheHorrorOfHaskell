@@ -38,17 +38,19 @@ main = do
   sampleMap <- parseMap "maps/customMap.json"
   sounds <- loadSounds
 
-  -- let sprites = [Sprite (6, 6) Barrel]
-  let enemy = Sprite (19, 45) Enemy
+  let enemy = Sprite (32.5, 20.5) Enemy
 
 
   let (ext, game) = constructMap sampleMap
-
-  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 False
+  let st = State ext game (11, 50 - 6.5) (1, 0) S.empty textures sounds 1 enemy 0 Playing
 
   playIO window black fps st renderFrame handleEvents handleTime
   where
-    window = InWindow "Boo" windowSize (700, 200)
+    window = InWindow "Boo" windowSize (800, 300)
+
+
+data GameState = Playing | Win | Loose
+  deriving Eq 
 
 
 
@@ -64,7 +66,7 @@ data State = State {
   timePassed :: Float,
   enemy :: Sprite,
   difficulty :: Int,
-  gameOver :: Bool
+  gameState :: GameState
 }
 
 constructMap :: GameMap -> (Extent, QuadTree Tile)
@@ -91,7 +93,7 @@ handleEvents _ s = return s
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
   playSound sound (sounds s) volume
-  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameOver = isGameOver}
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameState = newGameState}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
@@ -114,11 +116,14 @@ handleTime dt s = do
       | S.member (Char 'd') (keysPressed s) = rotateV (dt*pi/2) (playerDir s)
       | S.member (Char 'a') (keysPressed s) = rotateV (-dt*pi/2) (playerDir s)
       | otherwise = playerDir s
+    
    
-    isGameOver = gameOver s 
-                  || S.member (Char 'f') (keysPressed s)
-                  && Exit `elem` checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY) 
-                  && difficulty s >= 4
+    newGameState
+      | S.member (Char 'f') (keysPressed s)
+        && Exit `elem` checkForButtons (ext s) (gameMap s) (floor playerX, floor playerY) 
+        && difficulty s >= 4 = Win
+      | otherwise = gameState s
+
 
     (playerX, playerY) = playerPos s
     newDiff
@@ -134,7 +139,7 @@ handleTime dt s = do
     countDistance cx cy = abs (xf - cx) + abs (yf - cy)
 
     (sound, volume)
-      | gameOver s = (Menu, MAX_VOLUME)
+      | gameState s /= Playing        = (Menu, MAX_VOLUME)
       | hasChanged                    = (Click, MAX_VOLUME)
       | x == 12 && y == 19            = (Fart, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
@@ -143,9 +148,10 @@ handleTime dt s = do
       | floor newTime `mod` 90   == 0 = (Wind, MAX_VOLUME)
       | x == 4 && 28 <= y && y <= 30  = (Glass, MAX_VOLUME)
       | 21 <= x && x <= 50 &&
-        41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (4*countDistance 50 41)))
+        41 <= y && y <= 50            = (Water, MAX_VOLUME - min MAX_VOLUME (floor (7*countDistance 30 45)))
       | ((xf - bx)^2 +
-         (yf - by)^2) <= 25           = (Glitch, 70 - min 70 (floor (4*countDistance bx by)))  -- todo, make it for babayca
+         (yf - by)^2) <= 
+         15^2                         = (Glitch, 70 - min 70 (floor (7*countDistance bx by)))  -- todo, make it for babayca
       | otherwise                     = (Silence, 0)
 
 
@@ -191,13 +197,18 @@ checkForDoors ext m (x, y) = any checkPoint points
 renderFrame :: State -> IO Picture
 renderFrame s = do
   playSound sound sounds' volume
-  if not $ gameOver s
-     then return (floorAndCeiling <> pictures wallsAndSprites <> screenText) 
-     else return
-          $ translate (-(i2f halfW)) 0
-          $ scale 0.3 0.3 
-          $ color white
-          $ text "Game over. You won"
+  case gameState s of
+    Playing -> return (floorAndCeiling <> pictures wallsAndSprites <> screenText {- <> debugText -}) 
+    Win     -> return 
+            $ translate (-(i2f halfW)) 0
+            $ scale 0.3 0.3 
+            $ color white
+            $ text "Game over. You escaped."
+    Loose   -> return 
+            $ translate (-(i2f halfW)) 0
+            $ scale 0.3 0.3 
+            $ color white
+            $ text "Game over. You died."
 
   where
     ext' = ext s
@@ -221,6 +232,11 @@ renderFrame s = do
     zBuf = map snd rayResults
     floorAndCeiling = renderFloorAndCeiling
     sprites = [renderSprite s (enemy s)]
+
+    debugText = scale 0.2 0.2
+                $ color white
+                $ text
+                $ show pos
 
     screenText = if any (/= Exit) (checkForButtons ext' m posI)
                     then translate (-i2f halfW/2) 0
