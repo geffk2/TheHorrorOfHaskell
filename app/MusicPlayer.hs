@@ -27,7 +27,6 @@ data Sound
   | Glass
   | Glitch
   | Click
-  | Scream
   deriving Eq
 
 type Sounds = [(Sound, Mix.Chunk)]
@@ -46,7 +45,6 @@ loadSounds = do
   glass    <- Mix.load "sounds/glass.wav"
   glitch   <- Mix.load "sounds/glitch.wav"
   button   <- Mix.load "sounds/button.wav"
-  scream   <- Mix.load "sounds/scream.wav"
 
   let f Walking = walking
       f Doorbell = doorbell
@@ -60,7 +58,6 @@ loadSounds = do
       f Glass = glass
       f Glitch = glitch
       f Click = button
-      f Scream = scream
   
   return f
 
@@ -77,7 +74,6 @@ soundToChannel Water       = 7
 soundToChannel Glass       = 8
 soundToChannel Glitch      = 9
 soundToChannel Click       = 10
-soundToChannel Scream      = 11
 
 
 playSound :: Control.Monad.IO.Class.MonadIO m => Sound -> (Sound -> Mix.Chunk) -> Int -> m ()

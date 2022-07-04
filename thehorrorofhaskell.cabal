@@ -56,7 +56,6 @@ executable thehorrorofhaskell
     Config
     ParseMap
     MusicPlayer
-    Enemy
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -74,8 +73,5 @@ executable thehorrorofhaskell
     , sdl2-mixer
     , monad-control
     , matrix
-    , fgl
-    , lens
-    , parallel
   hs-source-dirs:   app
   default-language: Haskell2010
