@@ -27,12 +27,12 @@ transformCoords tup = (coef, fromIntegral coef)
 problemMap :: Extent -> QuadTree Tile -> [(Coord, Tile)]
 problemMap = flattenQuadTree
 
-makeLNode :: Extent -> QuadTree Tile -> [LNode Integer] -> Coord -> Coord -> [LNode Integer]
-makeLNode ex tree list (x, y) (a,  b)
-  | b == y+4 = list
-  | a == x+3 = makeLNode ex tree list (x, y) (x-3, y+1)
-  | lookupByCoord ex (a, b) tree == Nothing = makeLNode ex tree (list ++ [(a+b*49, toInteger (a+b*49))]) (x, y) (a+1, b) 
-  | otherwise = makeLNode ex tree list (x, y) (a+1, b)
+makeLNode :: Extent -> QuadTree Tile -> [LNode Integer] -> Coord  -> [LNode Integer]
+makeLNode ex tree list (x, y)
+  | x == 49 && y == 49 = list
+  | x == 49 = makeLNode ex tree list (0, y+1)
+  | lookupByCoord ex (x, y) tree == Nothing = makeLNode ex tree (list ++ [(x+y*49, toInteger (x+y*49))]) (x+1, y) 
+  | otherwise = makeLNode ex tree list (x+1, y)
 
 -- (n, n-1, (m' n (n-1)))
 --(n, n+1, (m' n (n+1)))
@@ -56,13 +56,13 @@ makeLEdge list1 compList ((a, b):pairs) = newList : makeLEdge list1 compList pai
     m' a b = toInteger (max a b)
 
 
-graph :: Extent -> QuadTree Tile -> Coord -> Gr Integer Integer
-graph ex tree (x, y)= mkGraph lnode (edgeConvert (makeLEdge [] lnode lnode))
+graph :: Extent -> QuadTree Tile -> Gr Integer Integer
+graph ex tree = mkGraph lnode (edgeConvert (makeLEdge [] lnode lnode))
   where
-    lnode = makeLNode ex tree [] (x, y) (x-3, y-3)
+    lnode = makeLNode ex tree [] (0, 0)
 
-bfs :: Extent -> QuadTree Tile -> Integer  -> Point -> Point -> Coord -> [(Int, Int)]
-bfs ex tree i (bx,by) (hx,hy) cord= analyze (Data.Graph.Inductive.Query.BFS.esp (x''+(y''*49)) (x'+(y'*49)) (graph ex tree cord))
+bfs :: Extent -> QuadTree Tile -> Point -> Point -> [(Int, Int)]
+bfs ex tree (bx,by) (hx,hy) = analyze (Data.Graph.Inductive.Query.BFS.esp (x''+(y''*49)) (x'+(y'*49)) (graph ex tree))
   where
     x'' = round bx
     y'' = round by

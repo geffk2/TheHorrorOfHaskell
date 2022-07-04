@@ -23,7 +23,9 @@ import SDL.Mixer (Chunk)
 import qualified SDL.Mixer as Mix
 import Config
 import SDL.Raw.Mixer
-import Enemy ( bfs, makeLNode )
+import Enemy
+import Data.List.NonEmpty (nonEmpty)
+import Control.Parallel.Strategies
 
 -- | Aliases for functions with extra long names
 raycast :: Point -> Point -> Extent -> QuadTree a -> Maybe (Point, Extent, a)
@@ -31,28 +33,33 @@ raycast = castSegIntoCellularQuadTree
 
 raytrace :: Point -> Point -> Extent -> QuadTree a -> [(Point, Extent, a)]
 raytrace = traceSegIntoCellularQuadTree
+
+myTail :: [a] -> [a]
+myTail (x:xs) = xs
+myTail [] = []    
+
 main :: IO ()
 
 main = do
   textures <- loadTextures
   sampleMap <- parseMap "maps/customMap.json"
   --print (uncurry  flattenQuadTree (constructMap sampleMap))
-  print (length (uncurry makeLNode (constructMap sampleMap) [] (14, 44) (11, 41)))
+  --print (length (uncurry makeLNode (constructMap sampleMap) [] (0, 0)))
   --print (makeLEdge [] (uncurry makeLNode (constructMap sampleMap) [] (0, 0)) (uncurry makeLNode (constructMap sampleMap) [] (0, 0)))
-  --print (uncurry bfs (constructMap sampleMap) 0 (14, 44) (10, 43) (14, 44))
   --sounds <- loadSounds
 
   -- let sprites = [Sprite (6, 6) Barrel]
-  let enemy = Sprite (14, 44) Enemy
+  let enemy = Sprite (10,48) Enemy
 
 
   let (ext, game) = constructMap sampleMap
 
-  let st = State ext game (10, 43) (1, 0) S.empty textures 1 enemy 0 False
+  let st = State ext game (10, 43) (1, 0) S.empty textures 1 enemy [] 0 False
 
   playIO window black fps st renderFrame handleEvents handleTime
   where
     window = InWindow "Boo" windowSize (700, 200)
+
 
 
 -- | All about the state
@@ -65,6 +72,7 @@ data State = State {
   textures :: Textures,
   timePassed :: Float,
   enemy :: Sprite,
+  enemyPath :: [(Int, Int)],
   difficulty :: Int,
   gameOver :: Bool
 }
@@ -80,8 +88,7 @@ constructMap m = (ext, foldr insTile emptyTree tiles)
     insTile :: (Maybe Tile, Coord) -> QuadTree Tile -> QuadTree Tile
     insTile (Just Air, c) t = t
     insTile (Just tile, c) t = fromMaybe t (insertByCoord ext c tile t)
-    insTile (Nothing, _)  t  = t  
-
+    insTile (Nothing, _)  t  = t
 
 -- | Handlers
 handleEvents :: Event -> State -> IO State
@@ -93,56 +100,68 @@ handleEvents _ s = return s
 handleTime :: Float -> State -> IO State
 handleTime dt s = do
  -- playSound sound (sounds s) volume
-  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, enemy=newEnemyMove, difficulty = newDiff, gameOver = isGameOver}
+  return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, enemy=updateEnemy, gameOver = isGameOver, enemyPath = newEnemyPath}
   where
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
             `addVV` keyToDir (Char 's') (mulSV (-1) (playerDir s))
-    nextPos = let
+    nextPos = withStrategy rpar let
         newPos = playerPos s `addVV` mulSV (2*dt) speed
         i2fV (x, y) = (floor x, floor y)
         isPosTaken p = isJust (lookupByCoord (ext s) p (gameMap s))
       in if isPosTaken (i2fV newPos) then newPos `addVV` mulSV (-2*dt) speed else newPos
 
     (bx, by) = pos (enemy s)
-    
-    enemyBFS = bfs (ext s) (gameMap s) 0 (bx, by) (playerPos s) (floor bx, floor by)
-    moveBFS
-      | length enemyBFS <= 1 = (floor bx, floor by)
-      | otherwise = enemyBFS !! 1
-    newEnemyPos
-      | fst moveBFS > bx' = (bx+0.03, by)
-      | fst moveBFS < bx' = (bx-0.03, by)
-      | snd moveBFS > by' = (bx, by+0.03)
-      | snd moveBFS < by' = (bx, by-0.03)
-      | otherwise = (bx, by)
-      where
-        bx' = floor bx
-        by' = floor by
 
-    goAfter :: [Coord] -> Point -> Float -> Point
-    goAfter ((a, b):xs) (bx, by) t
-      | t < 300 = goAfter xs (bx, by) t
-      | t >= 300 = do 
-          if a > floor bx then (bx+0.03, by)
-            else
-              if a < floor bx then (bx-0.03, by)
-                else
-                  if b > floor by then (bx, by+0.03)
-                    else
-                      if b < floor by then (bx, by-0.03)
-                        else 
-                          (bx, by)                 
-      | otherwise = (bx, by)
-    goAfter [] p t = (bx, by)                     
-                               
-       
+    newEnemyPath = do
+      if difficulty s >= 0 && (length (enemyPath s) == 0) then withStrategy rdeepseq (bfs (ext s) (gameMap s) (pos (enemy s)) (playerPos s))
+        else if difficulty s >= 0 then withStrategy rseq tail (enemyPath s)
+          else
+            enemyPath s
+
+     
+
+--14 44
+    updateEnemyPosition :: Float -> (Int, Int) -> Point
+    updateEnemyPosition f (x, y)
+      | x' < bx' =  (bx-f, by)
+      | x' > bx' =  (bx+f, by)
+      | y' < by' =  (bx, by-f)
+      | y' > by' =  (bx, by+f)
+      | x' == bx' && y == by' = (bx, by)
+        where
+          bx'= floor bx
+          by' = floor by
+          x' = fst ((enemyPath s) !! 0)
+          y' = snd ((enemyPath s) !! 0)
+    updateEnemyPosition f (_, _) = pos (enemy s)
+
+
+    updateEnemy
+    --  | (difficulty s) == 0 = Sprite (bx, by) Enemy
       
-    newEnemyMove = if floor newTime `mod` 10 == 0 then Sprite newEnemyPos Enemy
-                      else Sprite (goAfter enemyBFS (bx, by) newTime) Enemy
+    --  | (difficulty s) == 1 = Sprite (bx, by) Enemy
+    --  | (difficulty s) == 2 = Sprite (stupidMoving) Enemy
+
+      | (difficulty s) == 0 = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.03 ( (enemyPath s) !! 0)) Enemy
+                                else Sprite (bx, by) Enemy
+
+      | otherwise = if not (null (enemyPath s)) then Sprite (updateEnemyPosition 0.06 ( (enemyPath s) !! 0)) Enemy
+                                else Sprite (bx, by) Enemy
+
+    --Improve
+    stupidMoving :: Point
+    stupidMoving
+      | floor a `mod` 3 == 0 && even (floor b) = (bx+0.1, by)
+      | floor a `mod` 3 == 1 && floor b `mod` 2 == 1 = (bx-0.1, by)
+      | floor a `mod` 3 == 0 && floor b `mod` 2 == 1 = (bx, by+0.1)
+      | floor a `mod` 3 == 1 && even (floor b) = (bx, by-0.1)
+      | otherwise = (bx, by)
       where
-        (bx, by) = pos (enemy s)                      
--- 14, 44
+        a = bx+fst(playerPos s)
+        b = by+snd(playerPos s)
+
+
     newTime = timePassed s + dt
     xf = fst nextPos
     yf = snd nextPos
