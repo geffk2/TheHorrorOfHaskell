@@ -109,7 +109,7 @@ handleTime dt s = do
   return s{playerDir = newDir, playerPos = nextPos, timePassed = newTime, gameMap = newMap, difficulty = newDiff, gameState = newGameState,
                                enemy=updateEnemy, enemyPath = newEnemyPath, Main.graph=remakeGraph}
   where
-    vel = 5
+    vel = 2
     keyToDir k dir = if S.member k (keysPressed s) then dir else (0, 0)
     speed = keyToDir (Char 'w') (playerDir s)
             `addVV` keyToDir (Char 's') (mulSV (-1) (playerDir s))
@@ -178,6 +178,7 @@ handleTime dt s = do
       | (difficulty s) == 0 = Sprite (bx, by) Enemy
 
       | (difficulty s) == 1 = Sprite (bx, by) Enemy
+
       | (difficulty s) == 2 = smartEnemy (0.5*dt)
 
       | (difficulty s) == 3 = smartEnemy (1.2*dt)
@@ -191,19 +192,6 @@ handleTime dt s = do
                                                                              else if lookupByCoord (ext s) (round bx, round by) (gameMap s) == Nothing then Sprite (bx, by-1) Enemy
                                                                              else Sprite (bx, by+1) Enemy
                                   else Sprite (bx, by) Enemy         
-
-    --Improve
-    stupidMoving :: Point
-    stupidMoving
-      | floor a `mod` 3 == 0 && even (floor b) = (bx+0.1, by)
-      | floor a `mod` 3 == 1 && floor b `mod` 2 == 1 = (bx-0.1, by)
-      | floor a `mod` 3 == 0 && floor b `mod` 2 == 1 = (bx, by+0.1)
-      | floor a `mod` 3 == 1 && even (floor b) = (bx, by-0.1)
-      | otherwise = (bx, by)
-      where
-        a = bx+fst(playerPos s)
-        b = by+snd(playerPos s)
-
 
     newTime = timePassed s + dt
     xf = fst nextPos
