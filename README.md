@@ -1,17 +1,15 @@
-
 # TheHorrorOfHaskell
 
 ![Haskell](https://img.shields.io/badge/Haskell-5e5086?style=for-the-badge&logo=haskell&logoColor=white)
 
 
-<details>
-<summary>Click here</summary>
-Boo
-</details>
+<p float="cetre">
+  <img src="https://i.imgur.com/jKvUnjc.png" width="49%" />
+  <img src="https://i.imgur.com/6hfnFke.png" width="49%" />
+</p>
 
 
 # Links
-[GitHub Projects (to see process)](https://github.com/users/geffk2/projects/1/views/1)
 
 * [Introduction](#introduction)
   * [Project description](#project-description)
@@ -28,8 +26,16 @@ Boo
 * [Development](#development)
   * [Raycasting implementation](#raycasting-implementation)
   * [NPC brain](#npc-algorithm-implementation)
+  * [Sounds & Music](#sounds--music)
 
 # Introduction
+
+<details>
+<summary>Click here</summary>
+<b>Boo</b>
+</details>
+<br>
+
 ### Project description
 
 
@@ -43,7 +49,7 @@ This project seems interesting to us because it contains a lot of stept:
 
 We have exactly 3 team members, so we descided to distribute our roles like this:
 * Ekaterina Maximova - responsible for raytracing and testing (because other members are too scared to test)
-* Polina Zelenskaya - responsible for map and charachers designing
+* Polina Zelenskaya - responsible for map, charachers and sounds designing
 * Danila Kuzmin - responsible for NPC AI
 
 
@@ -122,32 +128,33 @@ If window `boo` appeared, you succesfully finished your configuration!
 ### Game story
 
 Your goal is to find all buttons to escape from old creppy house.
-However there you are not alone in the house, something strange is also with you. But don't mind it, it e̷v̴e̴r̶y̸t̴h̵i̸n̸g̴ ̴w̷i̴l̶l̶ ̴b̴e̴ ̵a̶l̵r̴i̷g̶h̸t̸
+However there you are not alone in the house, something strange is also with you. But don't mind it, e̷v̴e̴r̶y̸t̴h̵i̸n̸g̴ ̴w̷i̴l̶l̶ ̴b̴e̴ ̵a̶l̵r̴i̷g̶h̸t̸.
 
 
 ### Controls
 This game require only keyboard, so here is the list of all buttons and their functionallity:
 Game:
-* `w - move forwars`
-* `a - turn left` 
-* `s - move backeards`
-* `d - turn right`
-* `f - press button`
+* <kbd>w</kbd> - move forwars
+* <kbd>a</kbd> - turn left
+* <kbd>s</kbd> - move backeards
+* <kbd>d</kbd> - turn right
+* <kbd>f</kbd> - press button
 
 Map editor:
-* `w - move view upwards`
-* `s - move view downwards`
-* `a - move view left`
-* `d - move view right`
-* `i - move pointer upwards`
-* `k - move pointer downwards`
-* `j - move pointer left`
-* `l - move pointer right`
-* `h - place tile`
-* `q - previous tile`
-* `e - next tile`
-* `shift+s - save to file`
-Important to mention that all buttons are **key sensitive**!
+* <kbd>w</kbd> - move view upwards
+* <kbd>s</kbd> - move view downwards
+* <kbd>a</kbd> - move view left
+* <kbd>d</kbd> - move view right
+* <kbd>i</kbd> - move pointer upwards
+* <kbd>k</kbd> - move pointer downwards
+* <kbd>j</kbd> - move pointer left
+* <kbd>l</kbd> - move pointer right
+* <kbd>h</kbd> - place tile
+* <kbd>q</kbd> - previous tile
+* <kbd>e</kbd> - next tile
+* <kbd>shift</kbd> + <kbd>s</kbd> - save to file
+
+Important to mention that all buttons are **key and language sensitive**!
 
 
 
@@ -160,5 +167,36 @@ For walls we used `Graphics.Gloss.Algorithms.RayCast.castSegIntoCellularQuadTree
 
 For textures we implemeted `hitToTexture` function which by hitPoint and Side draw texture. Implementation could be found [here](https://github.com/geffk2/TheHorrorOfHaskell/blob/e822705e0cbf956dd23b31789529a4e9a9b99cdb/app/Main.hs#L151).
 
+
+For fog we used idea `the further the block, the darker it should be`, and based on this we just make render-line darker depending on `distance/renderDistance`.
+
+
+Sprites was the main difficulty. As they could be rendered by pixels, which makes game laggy and unplayable. So we descided to consider different approach where we sort all render objects by distance (0 - the furtheres) and then render them in this order (so further objects will be rendered behind nearest). This provides us abillity to draw sprites with no lag but small disproportion.
+
+
 ### NPC algorithm implementation
+
+Game difficulty rises with each button press. The more buttons you press, the harder is becames for you to escape NPC.
+
+NPC brain is BFS algorithm, so it know where exatly you are and what is the best way to get to you.
+
+<details>
+<summary>Spoiler: gameplay mechanics</summary>
+
+Difficulty modes (speed in blocks/second):
+* `0-1 buttons pressed` - NPC is not moving
+* `2 buttons pressed` - NPC speed `0.5`
+* `3 buttons pressed` - NPC speed `1.2`
+* `4 buttons pressed` - NPC speed `1.7`
+
+P.S. Player speed is `2`<br>
+P.P.S You could win in this game, we checked (it was very scary).
+
+</details>
+
+
+### Sounds & Music
+
+We used `sdl2-mixer` as main music library. However we faced the problem that with walking (or any other long sound) we run out of channels instantly. So we descided to have each sound on their own channel and manage them individually. This provides us to play all sounds at the same time as well as not to start the same sound on different channels simultaneously.
+
 
